@@ -834,6 +834,7 @@ int Controller::GetLocalSizeAtCrossRank(int i) {
   return local_sizes_for_cross_rank_[i];
 }
 
+//Request中的tensor是否可以进行allreduce了
 bool Controller::IncrementTensorCount(const Request& msg, int joined_size) {
   auto& name = msg.tensor_name();
   auto table_iter = message_table_.find(name);
