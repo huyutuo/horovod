@@ -638,7 +638,7 @@ void InitializeHorovodOnce(const int* ranks, int nranks) {
     }
 
     if (horovod_global.control_operation == LibType::MPI){
-      horovod_global.controller.reset(new MPIController(
+      horovod_global.controller.reset(new MPIController( //新建一个MPIController?
           horovod_global.response_cache,
           horovod_global.tensor_queue, horovod_global.timeline,
           horovod_global.parameter_manager, mpi_context));

@@ -76,7 +76,7 @@ public:
   //      a) The workers send a Request to the coordinator, indicating what
   //      they would like to do (which tensor they would like to gather and
   //      reduce, as well as their shape and type). They repeat this for every
-  //      tensor that they would like to operate on.
+  //      tensor that they would like to operate on. 每个tensor一个Request.
   //
   //      b) The workers send an empty "DONE" message to the coordinator to
   //      indicate that there are no more tensors they wish to operate on.
@@ -88,7 +88,8 @@ public:
   //
   //      d) The coordinator finds all tensors that are ready to be reduced,
   //      gathered, or all operations that result in an error. For each of
-  //      those, it sends a Response to all the workers. When no more
+  //      those, it sends a Response to all the workers(每个tensor一个Response,
+  //      发给所有的worker). When no more
   //      Responses are available, it sends a "DONE" response to the workers.
   //      If the process is being shutdown, it instead sends a "SHUTDOWN"
   //      response.
