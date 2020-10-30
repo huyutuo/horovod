@@ -88,8 +88,9 @@ public:
   //
   //      d) The coordinator finds all tensors that are ready to be reduced,
   //      gathered, or all operations that result in an error. For each of
-  //      those, it sends a Response to all the workers(每个tensor一个Response,
-  //      发给所有的worker). When no more
+  //      those, it sends a Response to all the workers(一个Response里可能会有多个
+  //      tensor，发给所有的worker。每个Response对象对应一个collective operation操作。
+  //      这些tensor放在fusion buffer里). When no more
   //      Responses are available, it sends a "DONE" response to the workers.
   //      If the process is being shutdown, it instead sends a "SHUTDOWN"
   //      response.

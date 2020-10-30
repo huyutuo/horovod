@@ -387,7 +387,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
   state.controller->Initialize();
 
   bool is_coordinator = state.controller->IsCoordinator();
-  bool is_homogeneous = state.controller->IsHomogeneous();
+  bool is_homogeneous = state.controller->IsHomogeneous();  //集群是否同构
   int size = state.controller->GetSize();
   int local_size = state.controller->GetLocalSize();
   int local_rank = state.controller->GetLocalRank();
@@ -989,6 +989,7 @@ Status EnqueueTensorAllgather(std::shared_ptr<OpContext> context,
 
 // Contexts and controller must be initialized and the background thread
 // must be running before this function is called.
+//构造一个Request对象，并放入tensorqueue
 Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                               std::shared_ptr<Tensor> tensor,
                               std::shared_ptr<Tensor> output, int root_rank,
