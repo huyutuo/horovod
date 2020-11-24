@@ -577,6 +577,7 @@ def _run_static(args):
     if settings.verbose >= 2:
         print('Remote host found: ' + ' '.join(remote_host_names))
 
+    # 如果remote_host_names>0 即存在两个或者两个以上的节点，则进行check_all_hosts_ssh_successful
     if len(remote_host_names) > 0:
         if settings.verbose >= 2:
             print('Checking ssh on all remote hosts.')
@@ -590,6 +591,7 @@ def _run_static(args):
     nics = driver_service.get_common_interfaces(settings, all_host_names,
                                                 remote_host_names, fn_cache)
 
+    # run_func 用法暂不清楚
     if args.run_func:
         # get the driver IPv4 address
         driver_ip = network.get_driver_ip(nics)
@@ -711,6 +713,7 @@ def _is_elastic(args):
     return args.host_discovery_script is not None or args.min_np is not None
 
 
+# 选择使用什么方式运行 command
 def _launch_job(args, settings, nics, command):
     env = os.environ.copy()
     config_parser.set_env_from_args(env, args)
@@ -742,6 +745,7 @@ def _run(args):
 
     # if hosts are not specified, either parse from hostfile, or default as
     # localhost
+    # 解析host
     if not args.hosts and not args.host_discovery_script:
         if args.hostfile:
             args.hosts = hosts.parse_host_files(args.hostfile)
