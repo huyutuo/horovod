@@ -250,6 +250,7 @@ OperationManager* CreateOperationManager(HorovodGlobalState& state) {
 
 // Process a Response by doing a reduction, a gather, a broadcast, or
 // raising an error.
+// 执行一个通信操作
 void PerformOperation(Response response, HorovodGlobalState& state) {
   std::vector<TensorTableEntry> entries;
   auto& timeline = horovod_global.timeline;
@@ -314,6 +315,7 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
 
   Status status;
   try {
+    // 真正执行操作
     status = op_manager->ExecuteOperation(entries, response);
   } catch (const std::exception& ex) {
     LOG(DEBUG, horovod_global.controller->GetRank()) << "ExecuteOperation Failed";
@@ -353,6 +355,7 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
 //      make progress if we have a thread pool limit.
 bool RunLoopOnce(HorovodGlobalState& state);
 
+// horovod.init()之后，此线程一直在后执行
 void BackgroundThreadLoop(HorovodGlobalState& state) {
 #if HAVE_CCL
   // Initialize ccl context
@@ -416,6 +419,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
 #endif
 
   // Open the timeline file on coordinator.
+  // 只在coordinator上产生timeline文件
   auto timeline_env = std::getenv(HOROVOD_TIMELINE);
   auto horovod_timeline = timeline_env != nullptr ? std::string(timeline_env) : std::string("");
   bool should_enable_timeline = false;
@@ -439,6 +443,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
   state.mark_cycles_in_timeline = mark_cycles;
 
   // Override Tensor Fusion threshold, if it's set.
+  // 重写Tensor Fusion大小
   state.parameter_manager.SetTensorFusionThresholdBytes(64 * 1024 * 1024);
   auto horovod_fusion_threshold = std::getenv(HOROVOD_FUSION_THRESHOLD);
   if (horovod_fusion_threshold != nullptr) {
@@ -492,6 +497,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
 #endif
 
   // Issue warning if hierarchical allreduce is enabled in heterogeneous cluster
+  // 异构集群
   if (is_coordinator &&
       (state.parameter_manager.HierarchicalAllreduce() ||
        state.parameter_manager.HierarchicalAllgather()) &&
@@ -537,6 +543,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
   LOG(INFO, horovod_global.controller->GetRank()) << "Horovod Initialized";
 
   // Iterate until shutdown.
+  // 在之前初始化state中的一些参数，然后一直执行RunLoopOnce
   try {
     while (RunLoopOnce(state));
   } catch (const std::exception& ex) {

@@ -23,6 +23,7 @@ namespace common {
 MPIAllreduce::MPIAllreduce(MPIContext* mpi_context, HorovodGlobalState* global_state)
     : AllreduceOp(global_state), mpi_context_(mpi_context) {}
 
+// MPI allreduce的具体实现
 Status MPIAllreduce::Execute(std::vector<TensorTableEntry>& entries, const Response& response) {
   auto& first_entry = entries[0];
 
@@ -53,6 +54,7 @@ Status MPIAllreduce::Execute(std::vector<TensorTableEntry>& entries, const Respo
   timeline.ActivityStartAll(entries, MPI_ALLREDUCE);
   const void* sendbuf = entries.size() > 1 || fused_input_data == buffer_data
                         ? MPI_IN_PLACE : fused_input_data;
+  // 执行openmpi中的方法
   int op = MPI_Allreduce(sendbuf, buffer_data,
                          (int) num_elements,
                          mpi_context_->GetMPIDataType(first_entry.tensor),
