@@ -67,9 +67,10 @@ public:
   //
   // The coordinator follows a master-worker paradigm. Rank zero acts
   // as the master (the "coordinator"), whereas all other ranks are simply
-  // workers. Each worker maintains a cache of tensors that are previously
-  // broadcasted as ready by other ranks. If the cache covers all incoming
-  // messages, there's no need for workers to do additional communications.
+  // workers. Each worker maintains a cache(Response Cache) of tensors that 
+  // are previously broadcasted as ready by other ranks. If the cache 
+  // covers all incoming messages, there's no need for workers to do additional 
+  // communications.
   // Otherwise, workers will communicate with each other to agree on what
   // tensors to be processed. The communication performs as following:
   //

@@ -249,7 +249,7 @@ OperationManager* CreateOperationManager(HorovodGlobalState& state) {
 }
 
 // Process a Response by doing a reduction, a gather, a broadcast, or
-// raising an error.
+// raising an error. 由后台线程调用，完成具体的allreduce, broadcast等操作
 void PerformOperation(Response response, HorovodGlobalState& state) {
   std::vector<TensorTableEntry> entries;
   auto& timeline = horovod_global.timeline;
