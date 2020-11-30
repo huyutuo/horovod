@@ -180,7 +180,7 @@ protected:
   int rank_ = 0;
   int local_rank_ = 0;
   int cross_rank_ = 0;
-  int size_ = 1;
+  int size_ = 1;    //rank的个数
   int local_size_ = 1;
   int cross_size_ = 1;
   bool is_coordinator_ = false;
