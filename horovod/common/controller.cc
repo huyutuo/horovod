@@ -80,8 +80,9 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
   CacheCoordinator cache_coordinator(response_cache_.num_active_bits());
 
   // message queue used only in this cycle
+  // 从tensor_queue_ 中将message_queue_tmp填充
   std::deque<Request> message_queue_tmp;
-  tensor_queue_.PopMessagesFromQueue(message_queue_tmp);
+  tensor_queue_.PopMessagesFromQueue(message_queue_tmp);  //tensor_queue_是算出来的梯度（不确定）
   for (auto& message : message_queue_tmp) {
     if (message.request_type() == Request::JOIN) {
       state.joined = true;
@@ -90,6 +91,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     }
 
     // Keep track of cache hits
+    // 如果message cache能够被命中，将message tensor name 放入stall_inspector
+    // stall_inspector 是干什么的
     if (response_cache_.capacity() > 0) {
       auto cache_ = response_cache_.cached(message);
       if (cache_ == ResponseCache::CacheState::HIT) {
@@ -112,6 +115,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     }
   }
 
+  // join集合在一块操作？ 如果state.joined 将response_cache_中的request所对应的bit全部放入cache_coordinator
   if (state.joined && response_cache_.capacity() > 0) {
     for (uint32_t bit : response_cache_.list_all_bits()) {
       cache_coordinator.record_hit(bit);
@@ -144,6 +148,12 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // Remove uncommon cached tensors from queue and replace to state
     // queue for next cycle. Skip adding common cached tensors to
     // queue as they are handled separately.
+
+    // 经过CoordinateCacheAndState(cache_coordinator) 之后，现在 cache_coordinator
+    // 中访存的都是common cache hits and cache invalidations ,下面将不在更新后的
+    // response_cache_中的 Request处理出来，然后放入tensor_queue_中，下一轮进行处理
+
+    // cache_coordinator 与 response_cache的作用与区别分别是什么
     std::deque<Request> messages_to_replace;
     size_t num_messages = message_queue_tmp.size();
     for (size_t i = 0; i < num_messages; ++i) {
@@ -156,6 +166,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
           messages_to_replace.push_back(std::move(message));
         } else {
           // Remove timing entry for messages being handled this cycle.
+          // 这一轮进行处理的话就不需要进行监控
           stall_inspector_.RemoveCachedTensor(message.tensor_name());
         }
       } else {
@@ -168,6 +179,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     tensor_queue_.PushMessagesToQueue(messages_to_replace);
   }
 
+  // message_queue_tmp 是这轮需要协调的所有Request
   if (!message_queue_tmp.empty()) {
     LOG(TRACE, rank_) << "Sent " << message_queue_tmp.size()
                       << " messages to coordinator.";
@@ -193,28 +205,35 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
   if (!need_communication) {
     // If all messages in queue have responses in cache, use fast path with
     // no additional coordination.
+    // 如果所有在queue中的request 在 responses cache中都存在，则不需要communication
 
     std::deque<Response> responses;
     // Convert cache hits to responses. Populate so that least
     // recently used responses get priority. All workers call the code
     // here so we use the get method here to consistently update the cache
     // order.
+    // LRU list
     for (auto bit : cache_coordinator.cache_hits()) {
       responses.push_back(response_cache_.get_response(bit));
     }
 
     // Fuse responses as normal.
+    // FuseResponses 用来将 满足要求的responses合并
     response_list = FuseResponses(responses, state);
     response_list.set_shutdown(cache_coordinator.should_shut_down());
-  } else {
+  } else
     // There are uncached messages coming in, need communication to figure out
     // whether those are ready to be reduced.
 
     // Collect all tensors that are ready to be reduced. Record them in the
     // tensor count table (rank zero) or send them to rank zero to be
     // recorded (everyone else).
+
+    // 需要进行communication
+    // message_queue_tmp是这轮需要协调的所有 Request
     std::vector<std::string> ready_to_reduce;
 
+    // 如果是coordinator
     if (is_coordinator_) {
       LOG(TRACE) << "Adding messages from rank 0";
       while (!message_queue_tmp.empty()) {
@@ -227,6 +246,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
           continue;
         }
 
+        // 判断是否准备好进行reduce
         bool reduce = IncrementTensorCount(message, state.joined_size);
         stall_inspector_.RecordUncachedTensorStart(
             message.tensor_name(), message.request_rank(), size_);
@@ -236,6 +256,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       }
 
       // Receive ready tensors from other ranks
+      // 先处理rank0 上的，然后从其他rank同步 ready_tensor ，然后在处理其他tensor上的
       std::vector<RequestList> ready_list;
       RecvReadyTensors(ready_to_reduce, ready_list);
 
@@ -266,6 +287,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       }
 
       // Check if tensors from previous ticks are ready to reduce after Joins.
+      // Joins具体代表什么操作？
       if (state.joined_size > 0) {
         for (auto& table_iter : message_table_) {
           int count = (int)table_iter.second.size();
@@ -311,6 +333,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         responses.push_back(std::move(join_response));
         state.joined_size = 0;
       }
+
+      // ready_to_reduce 转换为responses，然后再经过FuseResponses 转换为最终的response_list
       response_list = FuseResponses(responses, state);
       response_list.set_shutdown(should_shut_down);
 
@@ -318,6 +342,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       SendFinalTensors(response_list);
 
     } else {
+      // 不是rank0 不是coordinator
       RequestList message_list;
       message_list.set_shutdown(should_shut_down);
       while (!message_queue_tmp.empty()) {
@@ -343,6 +368,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
   // If need_communication is false, meaning no uncached message coming in,
   // thus no need to update cache.
+  // 将此次得到的response 放入response_cache_ 中
   if (need_communication && response_cache_.capacity() > 0) {
     // All workers add supported responses to cache. This updates the cache
     // order consistently across workers.

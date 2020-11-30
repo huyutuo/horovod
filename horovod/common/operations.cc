@@ -605,6 +605,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     state.timeline.MarkCycleStart();
   }
 
+  // 得到responselist，responlist是怎么形成的
   auto response_list =
       state.controller->ComputeResponseList(horovod_global.shut_down, state);
 
