@@ -81,6 +81,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
   // message queue used only in this cycle
   // 从tensor_queue_ 中将message_queue_tmp填充
+
+  // JOIN 是什么操作？
   std::deque<Request> message_queue_tmp;
   tensor_queue_.PopMessagesFromQueue(message_queue_tmp);  //tensor_queue_是算出来的梯度（不确定）
   for (auto& message : message_queue_tmp) {
