@@ -627,6 +627,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     LOG(TRACE, rank) << "Performing " << response.tensor_names_string();
     LOG(TRACE, rank) << "Processing " << response.tensor_names().size()
                      << " tensors";
+    // TODO 记录每次perform操作的时间，以及类型
     PerformOperation(response, horovod_global);
     LOG(TRACE, rank) << "Finished performing "
                      << response.tensor_names_string();
