@@ -86,7 +86,7 @@ private:
   uint32_t capacity_ = 0;
 
   // List containing cached entries. Each entry in the cache is a pair
-  // of a Response and a TensorParams struct.
+  // of a Response and a TensorParams struct.  LRU cache
   std::list<std::pair<Response, TensorParams>> cache_;
 
   // Vector of iterators to cache entries. Indexed by cache bit.

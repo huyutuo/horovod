@@ -61,6 +61,8 @@ void Controller::Initialize() {
   DoInitialization();
 }
 
+//coordination阶段的通信（通过response cache或worker-coordinator直接的request/response）
+//都在该函数中完成
 ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                                              HorovodGlobalState& state) {
   // Update cache capacity if autotuning is active.
@@ -85,17 +87,18 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       continue;
     }
 
-    // Keep track of cache hits
+    // Keep track of cache hits，把命中cache的request记录到cache coordinator中
     if (response_cache_.capacity() > 0) {
+      //判断request对应的response是否在cache中
       auto cache_ = response_cache_.cached(message);
-      if (cache_ == ResponseCache::CacheState::HIT) {
+      if (cache_ == ResponseCache::CacheState::HIT) {   //如果在
         uint32_t cache_bit = response_cache_.peek_cache_bit(message);
         cache_coordinator.record_hit(cache_bit);
 
         // Record initial time cached tensor is encountered in queue.
         stall_inspector_.RecordCachedTensorStart(message.tensor_name());
 
-      } else {
+      } else {                                         //如果不在
         if (cache_ == ResponseCache::CacheState::INVALID) {
           uint32_t cache_bit = response_cache_.peek_cache_bit(message);
           cache_coordinator.record_invalid_bit(cache_bit);
@@ -136,7 +139,9 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // determine if any worker has uncached messages in queue or requests
     // a shutdown. This function removes any invalid cache entries, if they
     // exist.
+    //---------------在这里，worker之间通过bitvector的allreduce操作完成协调过程------------
     CoordinateCacheAndState(cache_coordinator);
+    
     // Remove uncommon cached tensors from queue and replace to state
     // queue for next cycle. Skip adding common cached tensors to
     // queue as they are handled separately.
@@ -144,20 +149,21 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     size_t num_messages = message_queue_tmp.size();
     for (size_t i = 0; i < num_messages; ++i) {
       auto& message = message_queue_tmp.front();
-      if (response_cache_.cached(message) == ResponseCache::CacheState::HIT) {
+      if (response_cache_.cached(message) == ResponseCache::CacheState::HIT) {  //request命中cache
         uint32_t cache_bit = response_cache_.peek_cache_bit(message);
+        //uncommon cached tensors(不是在所有rank上都准备好的tensor)，放入messages_to_replace
         if (cache_coordinator.cache_hits().find(cache_bit) ==
-            cache_coordinator.cache_hits().end()) {
+            cache_coordinator.cache_hits().end()) { 
           // Try to process again in next cycle.
           messages_to_replace.push_back(std::move(message));
-        } else {
+        } else {       //common tensor，可以进行allreduce了，从stall_inspector里移出
           // Remove timing entry for messages being handled this cycle.
           stall_inspector_.RemoveCachedTensor(message.tensor_name());
         }
-      } else {
+      } else {                                                                //request未命中cache
         // Remove timing entry for messages being handled this cycle.
         stall_inspector_.RemoveCachedTensor(message.tensor_name());
-        message_queue_tmp.push_back(std::move(message));
+        message_queue_tmp.push_back(std::move(message));               //放入队尾
       }
       message_queue_tmp.pop_front();
     }
@@ -672,7 +678,7 @@ Response Controller::ConstructResponse(std::string& name, int joined_size) {
 }
 
 void Controller::CoordinateCacheAndState(CacheCoordinator& cache_coordinator) {
-  // Sync cache and state information across workers.
+  // Sync cache and state information across workers. 完成实际的协调过程
   cache_coordinator.sync(shared_from_this(), timeline_enabled_);
 
   // If invalid cache entries exist, erase associated entries.
