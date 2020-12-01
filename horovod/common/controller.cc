@@ -84,7 +84,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
   // JOIN 是什么操作？
   std::deque<Request> message_queue_tmp;
-  tensor_queue_.PopMessagesFromQueue(message_queue_tmp);  //tensor_queue_是算出来的梯度（不确定）
+  tensor_queue_.PopMessagesFromQueue(message_queue_tmp);  // tensor_queue_是算出来的梯度
   for (auto& message : message_queue_tmp) {
     if (message.request_type() == Request::JOIN) {
       state.joined = true;
@@ -146,16 +146,20 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // determine if any worker has uncached messages in queue or requests
     // a shutdown. This function removes any invalid cache entries, if they
     // exist.
+
+    // TODO 记录同步开始时间
     CoordinateCacheAndState(cache_coordinator);
+    // TODO 记录同步结束时间
+
     // Remove uncommon cached tensors from queue and replace to state
     // queue for next cycle. Skip adding common cached tensors to
     // queue as they are handled separately.
 
     // 经过CoordinateCacheAndState(cache_coordinator) 之后，现在 cache_coordinator
     // 中访存的都是common cache hits and cache invalidations ,下面将不在更新后的
-    // response_cache_中的 Request处理出来，然后放入tensor_queue_中，下一轮进行处理
+    // cache_coordinator中的 Request处理出来，然后放入tensor_queue_中，下一轮进行处理
 
-    // cache_coordinator 与 response_cache的作用与区别分别是什么
+    // cache_coordinator 与 response_cache的作用与区别分别是什么?
     std::deque<Request> messages_to_replace;
     size_t num_messages = message_queue_tmp.size();
     for (size_t i = 0; i < num_messages; ++i) {
@@ -221,6 +225,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
     // Fuse responses as normal.
     // FuseResponses 用来将 满足要求的responses合并
+    // TODO 合并前的responses 与合并后的 response_list 进行比较
     response_list = FuseResponses(responses, state);
     response_list.set_shutdown(cache_coordinator.should_shut_down());
   } else
@@ -260,7 +265,10 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       // Receive ready tensors from other ranks
       // 先处理rank0 上的，然后从其他rank同步 ready_tensor ，然后在处理其他tensor上的
       std::vector<RequestList> ready_list;
+
+      // TODO 记录同步前时间
       RecvReadyTensors(ready_to_reduce, ready_list);
+      // TODO 记录同步后时间
 
       // Process messages.
       for (int i = 1; i < size_; ++i) {
@@ -337,11 +345,15 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       }
 
       // ready_to_reduce 转换为responses，然后再经过FuseResponses 转换为最终的response_list
+      // TODO 记录合并前responses
       response_list = FuseResponses(responses, state);
+      // TODO 记录合并前response_list
       response_list.set_shutdown(should_shut_down);
 
       // Broadcast final results to other ranks.
+      // TODO 记录开始前时间
       SendFinalTensors(response_list);
+      // TODO 记录开始后时间
 
     } else {
       // 不是rank0 不是coordinator
@@ -353,10 +365,29 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       }
 
       // Send ready tensors to rank zero
+      // TODO 记录 worker 传送给 coordinator 的数据以及时间
+      // 数据量通过massage_list获取
+      // tensor_shape()
+      // root_rank()
+      // request_type()
+      // tensor_type()
+
+      // TODO 记录当前的时间
       SendReadyTensors(message_list);
+      // TODO 记录发送后的时间
+
 
       // Receive final tensors to be processed from rank zero
       RecvFinalTensors(response_list);
+      // TODO 记录接收完成之后的数据
+      // 通过response_list获取
+      // response_type()
+      // tensor_type()
+      // tensor_names_string()
+      // error_message()
+      // tensor_sizes()
+
+
     }
   }
 
