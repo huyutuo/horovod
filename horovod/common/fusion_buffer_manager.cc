@@ -22,6 +22,7 @@ Status FusionBufferManager::InitializeBuffer(int64_t threshold, int device, std:
                                              int stream_id,
                                              std::function<void()> on_start_init,
                                              std::function<void()> on_end_init) {
+  //tensor_fusion_buffers_是一个map
   auto& elem = tensor_fusion_buffers_[std::make_tuple(device, context->framework(), stream_id)];
   auto& buffer = elem.first;
   int64_t& size = elem.second;

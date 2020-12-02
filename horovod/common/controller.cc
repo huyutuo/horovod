@@ -349,6 +349,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
   //至此，coordination阶段的通信全部完成。
   /*-------------------------------------------------------------------------------*/
+  
   if (!response_list.responses().empty()) {
     std::string tensors_ready;
     for (const auto& r : response_list.responses()) {

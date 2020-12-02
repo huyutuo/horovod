@@ -26,7 +26,7 @@ MPIAllreduce::MPIAllreduce(MPIContext* mpi_context, HorovodGlobalState* global_s
 Status MPIAllreduce::Execute(std::vector<TensorTableEntry>& entries, const Response& response) {
   auto& first_entry = entries[0];
 
-  const void* fused_input_data;
+  const void* fused_input_data; //指向fusion buffer
   void* buffer_data;
   size_t buffer_len;
   int64_t num_elements = NumElements(entries);
@@ -52,8 +52,8 @@ Status MPIAllreduce::Execute(std::vector<TensorTableEntry>& entries, const Respo
   // Do allreduce.
   timeline.ActivityStartAll(entries, MPI_ALLREDUCE);
   const void* sendbuf = entries.size() > 1 || fused_input_data == buffer_data
-                        ? MPI_IN_PLACE : fused_input_data;
-  int op = MPI_Allreduce(sendbuf, buffer_data,
+                        ? MPI_IN_PLACE : fused_input_data; //MPI_IN_PLACE:发送和接收用同一个缓冲区
+  int op = MPI_Allreduce(sendbuf, buffer_data, 
                          (int) num_elements,
                          mpi_context_->GetMPIDataType(first_entry.tensor),
                          mpi_context_->GetMPISumOp(first_entry.tensor->dtype()),

@@ -68,6 +68,20 @@ int DoAllreduce(::torch::Tensor tensor, ::torch::Tensor output, int divisor,
 
   auto handle = handle_manager.AllocateHandle();
   auto device = GetDeviceID(tensor);
+
+  /*
+  https://github.com/horovod/horovod/issues/442,"what we found is that 
+  both TensorFlow and PyTorch will start running Horovod op before GPU 
+  kernels are fully completed. That's because GPU kernels are usually 
+  asynchronous, and so simply executing ops like this:
+  1. cuda_conv_kernel(..., stream);
+  2. mpi_allreduce();
+  Will potentially cause mpi_allreduce to perform the operation on garbage. 
+  For that reason, we add event synchronization between (1) and (2).
+  "
+  ready event会被加入到GPU的当前流中。当触发event时，表示梯度计算已经完成，
+  接下来可以对tensor执行allreduce操作了
+  */
   auto ready_event = RecordReadyEvent(device);
   auto hvd_tensor = std::make_shared<TorchTensor>(tensor);
   auto hvd_context = std::make_shared<TorchOpContext>(device, output);

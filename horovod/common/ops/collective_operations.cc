@@ -41,14 +41,15 @@ void AllreduceOp::MemcpyInFusionBuffer(
     void*& buffer_data, size_t& buffer_len) {
   // Access the fusion buffer.
   auto& first_entry = entries[0];
-  auto buffer = global_state_->fusion_buffer.GetBuffer(
+  auto buffer = global_state_->fusion_buffer.GetBuffer(  //系统里有多个fusion buffer，得到匹配的那个
       first_entry.device, first_entry.context->framework(), global_state_->current_nccl_stream);
   buffer_data = const_cast<void*>(buffer->AccessData(first_entry.context));
 
   int64_t offset = 0;
   for (auto& e : entries) {
     void* buffer_data_at_offset = (uint8_t*)buffer_data + offset;
-    MemcpyEntryInFusionBuffer(entries, e, buffer_data_at_offset);
+    //把e中的数据拷贝到buffer_data_at_offset中，没有用到entries
+    MemcpyEntryInFusionBuffer(entries, e, buffer_data_at_offset); 
     offset += e.tensor->size();
   }
 
