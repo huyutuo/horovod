@@ -149,9 +149,11 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // a shutdown. This function removes any invalid cache entries, if they
     // exist.
     //---------------在这里，worker之间通过bitvector的allreduce操作完成协调过程------------
-    // TODO 记录同步开始时间
+    // 记录同步开始时间
+    LOG(TRACE) << "iietest: " << "开始进行 CoordinateCacheAndState。通过bitvector的allreduce进行协调"; 
     CoordinateCacheAndState(cache_coordinator);
-    // TODO 记录同步结束时间
+    LOG(TRACE) << "iietest: " << "结束 CoordinateCacheAndState。通过bitvector的allreduce进行协调"; 
+    // 记录同步结束时间
     
     // Remove uncommon cached tensors from queue and replace to state
     // queue for next cycle. Skip adding common cached tensors to
@@ -192,6 +194,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
   if (!message_queue_tmp.empty()) {
     LOG(TRACE, rank_) << "Sent " << message_queue_tmp.size()
                       << " messages to coordinator.";
+    LOG(TRACE, rank_) << "iietest: " << "Sent " << message_queue_tmp.size()
+                      << " messages to coordinator.";
   }
 
   ResponseList response_list;
@@ -206,6 +210,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
     // If no messages to send, we can simply return an empty response list;
     if (cache_coordinator.cache_hits().empty()) {
+      LOG(TRACE) << "iietest: 没有message需要发送,返回空response list";
       return response_list;
     }
     // otherwise we need to add cached messages to response list.
@@ -215,6 +220,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // If all messages in queue have responses in cache, use fast path with
     // no additional coordination.
     // 如果所有在queue中的request 在 responses cache中都存在，则不需要communication
+    LOG(TRACE) << "iietest: 不需要进行communication";
 
     std::deque<Response> responses;
     // Convert cache hits to responses. Populate so that least
@@ -228,8 +234,42 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
     // Fuse responses as normal.
     // FuseResponses 用来将 满足要求的responses合并
-    // TODO 合并前的responses 与合并后的 response_list 进行比较
+    // 合并前的responses 与合并后的 response_list 进行比较
+
+    // 合并前信息
+    LOG(TRACE, rank_) << "iietest: responses合并前";
+    for (auto& response : responses) {
+      LOG(TRACE) << "iietest: " << "-------------------------------------";
+      LOG(TRACE) << "iietest:  response.ResponseType_Name: "
+        << response.ResponseType_Name(response.response_type());
+      LOG(TRACE) << "iietest: response.tensor_names_string: "
+        << response.tensor_names_string();
+      
+      LOG(TRACE) << "iietest: response.tensor_size():";
+      for (auto& size : response.tensor_sizes()) {
+        LOG(TRACE) << "iietest: response.tensor_size : " << size;
+      }
+      LOG(TRACE) << "iietest: " << "-------------------------------------";
+    }
+    
     response_list = FuseResponses(responses, state);
+    
+    // 合并后信息
+    LOG(TRACE, rank_) << "iietest: responses合并后";
+    for (auto& response : response_list.responses()) {
+      LOG(TRACE) << "iietest: " << "-------------------------------------";
+      LOG(TRACE) << "iietest:  response.ResponseType_Name: "
+        << response.ResponseType_Name(response.response_type());
+      LOG(TRACE) << "iietest: response.tensor_names_string: "
+        << response.tensor_names_string();
+      
+      LOG(TRACE) << "iietest: response.tensor_size():";
+      for (auto& size : response.tensor_sizes()) {
+        LOG(TRACE) << "iietest: response.tensor_size : " << size;
+      }
+      LOG(TRACE) << "iietest: " << "-------------------------------------";
+    }
+
     response_list.set_shutdown(cache_coordinator.should_shut_down());
   } else {  //worker和coordinator通信的部分。request和response的通信都在下面这段代码中
     // There are uncached messages coming in, need communication to figure out
@@ -244,7 +284,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     std::vector<std::string> ready_to_reduce;
 
     if (is_coordinator_) {  //rank0的工作
-      LOG(TRACE) << "Adding messages from rank 0";
+      LOG(TRACE, rank_) << "Adding messages from rank 0";
+      LOG(TRACE) << "iietest: Adding messages from rank 0";
 
       //这个循环首先处理的是rank0本身ready的Tensor,接收其它worker的request并处理在该循环之后，同样的代码逻辑
       while (!message_queue_tmp.empty()) {      
@@ -274,9 +315,14 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
       //该方法在controller的子类中实现,ready_to_reduce 在mpi实现里并没有用上
       //通过mpi gather接收其他rank发来的RequestList（按 rank 顺序放入 ready_list）
-      // TODO 记录同步前时间
+      // 记录同步前时间
+      LOG(TRACE) << "iietest: " << "RecvReadyTensors前";
+
       RecvReadyTensors(ready_to_reduce, ready_list);
-      // TODO 记录同步后时间
+
+      // 记录同步后时间
+      LOG(TRACE) << "iietest: " << "RecvReadyTensors后";
+      
 
       // Process messages. 循环从1开始，不包括rank0本身。处理收到的其它worker的request，判断相应tensor能否reduce
       for (int i = 1; i < size_; ++i) {
@@ -354,17 +400,49 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       }
       //把符合条件的response合并，降低通信开销
       // ready_to_reduce 转换为responses，然后再经过FuseResponses 转换为最终的response_list
-      // TODO 记录合并前responses
+      // 记录合并前responses
+      LOG(TRACE) << "iietest: responses合并前";
+      for (auto& response : responses) {
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+        LOG(TRACE) << "iietest:  response.ResponseType_Name: "
+          << response.ResponseType_Name(response.response_type());
+        LOG(TRACE) << "iietest: response.tensor_names_string: "
+          << response.tensor_names_string();
+        
+        LOG(TRACE) << "iietest: response.tensor_size():";
+        for (auto& size : response.tensor_sizes()) {
+          LOG(TRACE) << "iietest: response.tensor_size : " << size;
+        }
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+      }
       response_list = FuseResponses(responses, state);
-      // TODO 记录合并前response_list
+
+      // 记录合并后response_list
+      LOG(TRACE) << "iietest: responses合并后";
+      for (auto& response : response_list.responses()) {
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+        LOG(TRACE) << "iietest:  response.ResponseType_Name: "
+          << response.ResponseType_Name(response.response_type());
+        LOG(TRACE) << "iietest: response.tensor_names_string: "
+          << response.tensor_names_string();
+        
+        LOG(TRACE) << "iietest: response.tensor_size():";
+        for (auto& size : response.tensor_sizes()) {
+          LOG(TRACE) << "iietest: response.tensor_size : " << size;
+        }
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+      }
+
+      
       response_list.set_shutdown(should_shut_down);
 
       
       // Broadcast final results to other ranks.在controller子类中实现
-      // TODO 记录开始前时间
+      // 记录开始前时间
+      LOG(TRACE) << "iietest: SendFinalTensors开始前";
       SendFinalTensors(response_list);
-      // TODO 记录开始后时间
-
+      // 记录开始后时间
+      LOG(TRACE) << "iietest: SendFinalTensors开始前";
     } else {         //worker的工作
       RequestList message_list;
       message_list.set_shutdown(should_shut_down);
@@ -378,27 +456,63 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       // Send ready tensors to rank zero
       //把message_list中的request通过一个MPI_GATHER操作发给rank0
 
-      // TODO 记录 worker 传送给 coordinator 的数据以及时间
+      // 记录 worker 传送给 coordinator 的数据以及时间
       // 数据量通过massage_list获取
-      // tensor_shape()
-      // root_rank()
       // request_type()
-      // tensor_type()
+      // root_rank()
+      // tensor_name()
+      // tensor_shape()
+      LOG(TRACE) << "iietest: " << "发送给coordinator的message具体信息为";
+      for (auto& request : message_list.requests()) {
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+        LOG(TRACE) << "iietest: request.RequestType_Name: "
+          << request.RequestType_Name(request.request_type());
+        LOG(TRACE) << "iietest: request.root_rank: "
+          << request.root_rank();
+        LOG(TRACE) << "iietest: request.tensor_name: "
+          << request.tensor_name();
+        LOG(TRACE) << "iietest: request.tensor_type: "
+          << DataType_Name(request.tensor_type());
+        LOG(TRACE) << "iietest: request.tensor_shape():";
+        for (auto& size : request.tensor_shape()) {
+          LOG(TRACE) << "iietest: request.tensor_shape: " << size;
+        }
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+      }
 
-      // TODO 记录当前的时间
+      // 记录当前的时间
+      LOG(TRACE) << "iietest: " << "发送给coordinator的message前";
       SendReadyTensors(message_list);
-      // TODO 记录发送后的时间
+      // 记录发送后的时间
+      LOG(TRACE) << "iietest: " << "发送给coordinator的message后";
 
 
       // Receive final tensors to be processed from rank zero
+      LOG(TRACE) << "iietest: 从coordinator接受的具体信息前";
       RecvFinalTensors(response_list);
-      // TODO 记录接收完成之后的数据
+      LOG(TRACE) << "iietest: 从coordinator接受的具体信息后";
+      // 记录接收完成之后的数据
       // 通过response_list获取
       // response_type()
       // tensor_type()
       // tensor_names_string()
       // error_message()
       // tensor_sizes()
+      
+      LOG(TRACE) << "iietest: 从coordinator接受的具体信息为";
+      for (auto& response : response_list.responses()) {
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+        LOG(TRACE) << "iietest:  response.ResponseType_Name: "
+          << response.ResponseType_Name(response.response_type());
+        LOG(TRACE) << "iietest: response.tensor_names_string: "
+          << response.tensor_names_string();
+        
+        LOG(TRACE) << "iietest: response.tensor_size():";
+        for (auto& size : response.tensor_sizes()) {
+          LOG(TRACE) << "iietest: response.tensor_size : " << size;
+        }
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+      }
 
 
     }
@@ -414,6 +528,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       tensors_ready += r.tensor_names_string() + "; ";
     }
     LOG(TRACE) << "Sending ready responses as " << tensors_ready;
+    LOG(TRACE) << "iietest: Sending ready responses as " << tensors_ready;
   }
 
   // If need_communication is false, meaning no uncached message coming in,
