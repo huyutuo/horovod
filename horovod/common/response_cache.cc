@@ -120,11 +120,12 @@ void ResponseCache::put_(const Response& response, TensorParams& params, bool jo
     // If entry already exists, move entry to front of cache_
     // (most recently used) and update iterator in cache_iters_
     // at the existing cache bit position.
+    //找到tensor在cache中的位置
     cache_bit = tensor_name_to_bit_[response.tensor_names()[0]];
     auto it = cache_iters_[cache_bit];
     cache_.push_front(std::move(*it));
     cache_.erase(it);
-  } else if (cache_.size() == capacity_) {
+  } else if (cache_.size() == capacity_) {  //如果cache满了，按LRU弹出一个元素
     if (print_warning_) {
       std::stringstream message;
       message << "A response has been evicted from cache which may indicate "
@@ -144,7 +145,7 @@ void ResponseCache::put_(const Response& response, TensorParams& params, bool jo
     tensor_name_to_bit_.erase(entry.tensor_names()[0]);
     cache_.pop_back();
     cache_.push_front(std::make_pair(response, std::move(params)));
-  } else {
+  } else {                          //如果cache不满，直接把response加入
     // New entry added to front of cache_. Entry is associated with
     // the next available position in cache_iters_ vector.
     cache_bit = cache_iters_.size();
@@ -339,11 +340,14 @@ bool CacheCoordinator::uncached_in_queue() const {
   return uncached_in_queue_;
 }
 
+//sync需要执行两次allreduce同步，第一次是找到common hit bit，第二次是invalid cache entries
 void CacheCoordinator::sync(std::shared_ptr<Controller> controller,
                             bool timeline_enabled) {
   assert(!synced_);
 
-  // Resize and initialize bit vector.
+  // Resize and initialize bit vector. 
+  // bitvector通过一个vector<long long>实现，count为该vector的长度
+  // sizeof(long long) * CHAR_BIT为1个long long类型的空间能存储多少bit
   int nbits = num_active_bits_ + NUM_STATUS_BITS;
   int count = (nbits + sizeof(long long) * CHAR_BIT - 1) /
               (sizeof(long long) * CHAR_BIT);
@@ -361,7 +365,8 @@ void CacheCoordinator::sync(std::shared_ptr<Controller> controller,
   }
 
   // Set reserved status bits for additional states.
-  if (!should_shut_down_) {
+  // ull为unsigned long long, <<左移操作符，左移一位相当于乘以2
+  if (!should_shut_down_) { // |=为按位或，再赋值
     bitvector_[0] |= (1ull << StatusBit::SHOULD_SHUT_DOWN);
   }
   if (!uncached_in_queue_) {
@@ -379,8 +384,9 @@ void CacheCoordinator::sync(std::shared_ptr<Controller> controller,
   // For each cache hit on this worker, flip associated bit in bit vector.
   for (auto bit : cache_hits_) {
     int shifted_bit = bit + NUM_STATUS_BITS;
+    //shift为相关bit在bit vector中的索引
     int shift = shifted_bit / (sizeof(long long) * CHAR_BIT);
-    bitvector_[shift] |=
+    bitvector_[shift] |=     //把bit vector中的相应位置为1
         (1ull << (shifted_bit % (sizeof(long long) * CHAR_BIT)));
     if (timeline_enabled) {
       // Set corresponding bit in extended section for timeline if needed.
@@ -390,7 +396,11 @@ void CacheCoordinator::sync(std::shared_ptr<Controller> controller,
   }
 
   // Global AND operation to get intersected bit array.
+  // 只有在每个rank的bit vector中对应的位都是1，结果才是1，表明对应的tensor可以进行allreduce
+  //在controller的子类中实现，mpi通过allreduce实现所有rank的按位与  
   controller->CrossRankBitwiseAnd(bitvector_, fullcount);
+
+//-----------------------至此，通过response cache进行的协调通信完成-------------
 
   // Search for flipped bits to populate common cache hit set. There will never
   // be invalid bits in this set.
@@ -399,12 +409,12 @@ void CacheCoordinator::sync(std::shared_ptr<Controller> controller,
     int shift = i * sizeof(long long) * CHAR_BIT;
     long long ll = bitvector_[i];
     while (ll) {
-      int idx = __builtin_ffsll(ll);
+      int idx = __builtin_ffsll(ll); //GCC内置位运算函数, 返回x的最后一位1的是从后向前第几位，比如7368（1110011001000）返回4
       int shifted_bit = shift + idx - 1;
       cache_hits_.insert(shifted_bit - NUM_STATUS_BITS);
       ll &= ~(1ull << (idx - 1));
     }
-  }
+  }  //循环完成后，只有在所有rank上都已准备好的tensor对应的bit，在cache_hits_中才为1
 
   // Set states from reserved status bits
   if (!cache_hits_.erase(StatusBit::SHOULD_SHUT_DOWN - NUM_STATUS_BITS)) {

@@ -19,3 +19,5 @@ examples/**/checkpoint*
 horovod/tensorflow/mpi_lib.so
 horovod/torch/test_cuda/
 
+docs/Horovod测试机/horovod.pem
+docs/Horovod测试机/微信图片_20201010145508.png

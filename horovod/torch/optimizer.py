@@ -75,7 +75,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self._synchronized = False
         self._should_synchronize = True
         if size() > 1 or os.environ.get('HOROVOD_ELASTIC') == '1':
-            self._register_hooks()
+            self._register_hooks() #注册hook，实现WFBP。
 
     def load_state_dict(self, *args, **kwargs):
         self._handles = {}
@@ -144,7 +144,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             handle, ctx = None, None
             self._allreduce_delay[p] -= 1
             if self._allreduce_delay[p] == 0:
-                handle, ctx = self._allreduce_grad_async(p)
+                handle, ctx = self._allreduce_grad_async(p)  #触发Allreduce操作
             self._handles[p] = (handle, ctx)
         return hook
 

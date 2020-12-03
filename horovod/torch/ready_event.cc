@@ -42,6 +42,7 @@ namespace torch {
 
 #if HAVE_GPU
 struct ReadyEventRegistry {
+  //每个deviceid对应一个cuda event队列。
   std::unordered_map<int, std::queue<cudaEvent_t>> cuda_events;
   std::mutex mutex;
 };
@@ -55,12 +56,12 @@ TorchReadyEvent::TorchReadyEvent(int device) : device_(device) {
   {
     std::lock_guard<std::mutex> guard(ready_event_registry.mutex);
     auto& queue = ready_event_registry.cuda_events[device_];
-    if (!queue.empty()) {
-      cuda_event_ = queue.front();
+    if (!queue.empty()) {  //如果device对应的cuda event队列不为空，则取出队头的event
+      cuda_event_ = queue.front(); 
       queue.pop();
-    } else {
+    } else {               //否则创建一个event，为什么不为device创建event队列？
       #if TORCH_VERSION >= 1005000000
-      C10_CUDA_CHECK(cudaEventCreateWithFlags(
+      C10_CUDA_CHECK(cudaEventCreateWithFlags(    //创建一个cuda事件
           &cuda_event_, cudaEventBlockingSync | cudaEventDisableTiming));
       #else
       THCudaCheck(cudaEventCreateWithFlags(
@@ -70,7 +71,7 @@ TorchReadyEvent::TorchReadyEvent(int device) : device_(device) {
   }
   #if TORCH_VERSION >= 1005000000
   auto stream = c10::cuda::getCurrentCUDAStream(device_);
-  C10_CUDA_CHECK(cudaEventRecord(cuda_event_, stream));
+  C10_CUDA_CHECK(cudaEventRecord(cuda_event_, stream)); //把cuda event插入当前的流
   #else
   auto stream = THCState_getCurrentStreamOnDevice(state, device_);
   THCudaCheck(cudaEventRecord(cuda_event_, stream));

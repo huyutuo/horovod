@@ -36,7 +36,7 @@ void MPIController::DoInitialization() {
   // Get MPI size to determine how many tensors to wait for before reducing.
   MPI_Comm_size(mpi_ctx_.mpi_comm, &size_);
 
-  if (is_coordinator_) {
+  if (is_coordinator_) {  //只在rank0上输出
     LOG(DEBUG) << "Started Horovod with " << size_ << " processes";
   }
 
@@ -49,7 +49,7 @@ void MPIController::DoInitialization() {
                 MPI_INT, mpi_ctx_.local_comm);
 
   // Determine if cluster is homogeneous, i.e., if every node has the same
-  // local_size
+  // local_size。是否同构有何影响？
   auto local_sizes = std::vector<int>(size_);
   MPI_Allgather(&local_size_, 1, MPI_INT, local_sizes.data(), 1, MPI_INT,
                 mpi_ctx_.mpi_comm);

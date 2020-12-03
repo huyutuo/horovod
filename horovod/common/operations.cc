@@ -249,8 +249,7 @@ OperationManager* CreateOperationManager(HorovodGlobalState& state) {
 }
 
 // Process a Response by doing a reduction, a gather, a broadcast, or
-// raising an error.
-// 执行一个通信操作
+// raising an error. 由后台线程调用，完成具体的allreduce, broadcast等操作
 void PerformOperation(Response response, HorovodGlobalState& state) {
   std::vector<TensorTableEntry> entries;
   auto& timeline = horovod_global.timeline;
@@ -262,11 +261,11 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
       timeline.Start(e.tensor_name, response.response_type());
     }
 
-    if (entries.size() > 1) {
+    if (entries.size() > 1) {    
       auto first_entry = entries[0];
       // Note: it is OK for different entries to come from different frameworks
       // since buffer allocated here is guaranteed to survive at least till the
-      // end of this operation.
+      // end of this operation.  这里的framework应该是通信框架，如mpi,nccl等。
       Status status = horovod_global.fusion_buffer.InitializeBuffer(
           horovod_global.controller->TensorFusionThresholdBytes(),
           first_entry.device, first_entry.context,
@@ -288,15 +287,15 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
 
     // On GPU data readiness is signalled by ready_event.
     std::vector<TensorTableEntry> waiting_tensors;
-    for (auto& e : entries) {
-      if (e.ready_event != nullptr) {
+    for (auto& e : entries) {  //如果ready event不为空，表示梯度计算尚未完成
+      if (e.ready_event != nullptr) {  //ready_event什么时候会是空？
         timeline.ActivityStart(e.tensor_name, WAIT_FOR_DATA);
-        waiting_tensors.push_back(e);
+        waiting_tensors.push_back(e); 
       }
     }
-    while (!waiting_tensors.empty()) {
+    while (!waiting_tensors.empty()) {   //不停循环，直到waiting_tensors为空,表示所有tensor的计算都已经真正完成
       for (auto it = waiting_tensors.begin(); it != waiting_tensors.end();) {
-        if (it->ready_event->Ready()) {
+        if (it->ready_event->Ready()) {  //cuda event状态为ready，表明本tensor已经计算完成
           timeline.ActivityEnd(it->tensor_name);
           timeline.ActivityStart(it->tensor_name, WAIT_FOR_OTHER_TENSOR_DATA);
           it = waiting_tensors.erase(it);
@@ -315,8 +314,7 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
 
   Status status;
   try {
-    // 真正执行操作
-    status = op_manager->ExecuteOperation(entries, response);
+    status = op_manager->ExecuteOperation(entries, response);  //执行操作
   } catch (const std::exception& ex) {
     LOG(DEBUG, horovod_global.controller->GetRank()) << "ExecuteOperation Failed";
     status = Status::UnknownError(ex.what());
@@ -392,12 +390,13 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
   state.controller->Initialize();
 
   bool is_coordinator = state.controller->IsCoordinator();
-  bool is_homogeneous = state.controller->IsHomogeneous();
+  bool is_homogeneous = state.controller->IsHomogeneous();  //集群是否同构
   int size = state.controller->GetSize();
   int local_size = state.controller->GetLocalSize();
   int local_rank = state.controller->GetLocalRank();
 
-  // Set background thread affinity
+  // Set background thread affinity，线程跟cpu核的亲近性。只适用于Intel oneCCL?
+  // https://horovod.readthedocs.io/en/latest/oneccl_include.html, https://github.com/horovod/horovod/pull/2131
   parse_and_set_affinity(std::getenv(HOROVOD_THREAD_AFFINITY), local_size, local_rank);
 
 #if HAVE_GPU
@@ -588,6 +587,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
 
 }
 
+//背景线程的循环体
 bool RunLoopOnce(HorovodGlobalState& state) {
   // This delay determines thread frequency and communication message latency
   auto start_time = std::chrono::steady_clock::now();
@@ -605,7 +605,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     state.timeline.MarkCycleStart();
   }
 
-  // 得到responselist，responlist是怎么形成的
+  //完成coordination。response_list保存了本次循环要进行allreduce的tensor
   auto response_list =
       state.controller->ComputeResponseList(horovod_global.shut_down, state);
 
@@ -620,8 +620,11 @@ bool RunLoopOnce(HorovodGlobalState& state) {
         response_list, tensor_names);
   }
 
+  /*-------------------开始进行collective operation----------------------*/
+  
   // Perform the collective operation. All nodes should end up performing
   // the same operation.
+  // 除了allreduce，还有gather, broadcast等操作。什么时候会执行到这些操作？
   int rank = state.controller->GetRank();
   for (auto& response : response_list.responses()) {
     LOG(TRACE, rank) << "Performing " << response.tensor_names_string();
@@ -660,7 +663,7 @@ void InitializeHorovodOnce(const int* ranks, int nranks) {
     }
 
     if (horovod_global.control_operation == LibType::MPI){
-      horovod_global.controller.reset(new MPIController(
+      horovod_global.controller.reset(new MPIController( //新建一个MPIController?
           horovod_global.response_cache,
           horovod_global.tensor_queue, horovod_global.timeline,
           horovod_global.parameter_manager, mpi_context));
@@ -995,6 +998,7 @@ Status EnqueueTensorAllgather(std::shared_ptr<OpContext> context,
 
 // Contexts and controller must be initialized and the background thread
 // must be running before this function is called.
+//构造一个Request对象，并放入tensorqueue
 Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                               std::shared_ptr<Tensor> tensor,
                               std::shared_ptr<Tensor> output, int root_rank,

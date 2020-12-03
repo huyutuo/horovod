@@ -52,6 +52,7 @@ void Controller::SynchronizeParameters() {
   parameter_manager_.Reset();
 }
 
+// tensor_queue应该存放的是算出来的梯度 
 Controller::Controller(ResponseCache& response_cache, TensorQueue& tensor_queue,
                        Timeline& timeline, ParameterManager& parameter_manager)
     : stall_inspector_(response_cache), tensor_queue_(tensor_queue),
@@ -65,6 +66,8 @@ void Controller::Initialize() {
   DoInitialization();
 }
 
+//coordination阶段的通信（通过response cache或worker-coordinator直接的request/response）
+//都在该函数中完成
 ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                                              HorovodGlobalState& state) {
   // Update cache capacity if autotuning is active.
@@ -84,7 +87,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
   // JOIN 是什么操作？
   std::deque<Request> message_queue_tmp;
-  tensor_queue_.PopMessagesFromQueue(message_queue_tmp);  // tensor_queue_是算出来的梯度
+  tensor_queue_.PopMessagesFromQueue(message_queue_tmp);  //tensor_queue_是算出来的梯度
   for (auto& message : message_queue_tmp) {
     if (message.request_type() == Request::JOIN) {
       state.joined = true;
@@ -92,19 +95,18 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       continue;
     }
 
-    // Keep track of cache hits
-    // 如果message cache能够被命中，将message tensor name 放入stall_inspector
-    // stall_inspector 是干什么的
+    // Keep track of cache hits，把命中cache的request记录到cache coordinator中
     if (response_cache_.capacity() > 0) {
+      //判断request对应的response是否在cache中
       auto cache_ = response_cache_.cached(message);
-      if (cache_ == ResponseCache::CacheState::HIT) {
+      if (cache_ == ResponseCache::CacheState::HIT) {   //如果在
         uint32_t cache_bit = response_cache_.peek_cache_bit(message);
         cache_coordinator.record_hit(cache_bit);
 
         // Record initial time cached tensor is encountered in queue.
         stall_inspector_.RecordCachedTensorStart(message.tensor_name());
 
-      } else {
+      } else {                                         //如果不在
         if (cache_ == ResponseCache::CacheState::INVALID) {
           uint32_t cache_bit = response_cache_.peek_cache_bit(message);
           cache_coordinator.record_invalid_bit(cache_bit);
@@ -146,11 +148,11 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // determine if any worker has uncached messages in queue or requests
     // a shutdown. This function removes any invalid cache entries, if they
     // exist.
-
+    //---------------在这里，worker之间通过bitvector的allreduce操作完成协调过程------------
     // TODO 记录同步开始时间
     CoordinateCacheAndState(cache_coordinator);
     // TODO 记录同步结束时间
-
+    
     // Remove uncommon cached tensors from queue and replace to state
     // queue for next cycle. Skip adding common cached tensors to
     // queue as they are handled separately.
@@ -164,21 +166,22 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     size_t num_messages = message_queue_tmp.size();
     for (size_t i = 0; i < num_messages; ++i) {
       auto& message = message_queue_tmp.front();
-      if (response_cache_.cached(message) == ResponseCache::CacheState::HIT) {
+      if (response_cache_.cached(message) == ResponseCache::CacheState::HIT) {  //request命中cache
         uint32_t cache_bit = response_cache_.peek_cache_bit(message);
+        //uncommon cached tensors(不是在所有rank上都准备好的tensor)，放入messages_to_replace
         if (cache_coordinator.cache_hits().find(cache_bit) ==
-            cache_coordinator.cache_hits().end()) {
+            cache_coordinator.cache_hits().end()) { 
           // Try to process again in next cycle.
           messages_to_replace.push_back(std::move(message));
-        } else {
+        } else {       //common tensor，可以进行allreduce了，从stall_inspector里移出
           // Remove timing entry for messages being handled this cycle.
           // 这一轮进行处理的话就不需要进行监控
           stall_inspector_.RemoveCachedTensor(message.tensor_name());
         }
-      } else {
+      } else {                                                                //request未命中cache
         // Remove timing entry for messages being handled this cycle.
         stall_inspector_.RemoveCachedTensor(message.tensor_name());
-        message_queue_tmp.push_back(std::move(message));
+        message_queue_tmp.push_back(std::move(message));               //放入队尾
       }
       message_queue_tmp.pop_front();
     }
@@ -208,7 +211,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // otherwise we need to add cached messages to response list.
   }
 
-  if (!need_communication) {
+  if (!need_communication) {  //worker和coordinator不需要通信即可完成协商(ResponseCache的作用)
     // If all messages in queue have responses in cache, use fast path with
     // no additional coordination.
     // 如果所有在queue中的request 在 responses cache中都存在，则不需要communication
@@ -228,7 +231,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // TODO 合并前的responses 与合并后的 response_list 进行比较
     response_list = FuseResponses(responses, state);
     response_list.set_shutdown(cache_coordinator.should_shut_down());
-  } else {
+  } else {  //worker和coordinator通信的部分。request和response的通信都在下面这段代码中
     // There are uncached messages coming in, need communication to figure out
     // whether those are ready to be reduced.
 
@@ -240,10 +243,11 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // message_queue_tmp是这轮需要协调的所有 Request
     std::vector<std::string> ready_to_reduce;
 
-    // 如果是coordinator
-    if (is_coordinator_) {
+    if (is_coordinator_) {  //rank0的工作
       LOG(TRACE) << "Adding messages from rank 0";
-      while (!message_queue_tmp.empty()) {
+
+      //这个循环首先处理的是rank0本身ready的Tensor,接收其它worker的request并处理在该循环之后，同样的代码逻辑
+      while (!message_queue_tmp.empty()) {      
         // Pop the first available message
         Request message = message_queue_tmp.front();
         message_queue_tmp.pop_front();
@@ -253,9 +257,11 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
           continue;
         }
 
-        // 判断是否准备好进行reduce
-        bool reduce = IncrementTensorCount(message, state.joined_size);
-        stall_inspector_.RecordUncachedTensorStart(
+        //判断message包含的tensor是否可以进行allreduce了（在所有节点上都ready）
+        bool reduce = IncrementTensorCount(message, state.joined_size);    
+
+        // Record initial time for an uncached tensor is encountered in queue.
+        stall_inspector_.RecordUncachedTensorStart(             
             message.tensor_name(), message.request_rank(), size_);
         if (reduce) {
           ready_to_reduce.push_back(message.tensor_name());
@@ -266,11 +272,13 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       // 先处理rank0 上的，然后从其他rank同步 ready_tensor ，然后在处理其他tensor上的
       std::vector<RequestList> ready_list;
 
+      //该方法在controller的子类中实现,ready_to_reduce 在mpi实现里并没有用上
+      //通过mpi gather接收其他rank发来的RequestList（按 rank 顺序放入 ready_list）
       // TODO 记录同步前时间
       RecvReadyTensors(ready_to_reduce, ready_list);
       // TODO 记录同步后时间
 
-      // Process messages.
+      // Process messages. 循环从1开始，不包括rank0本身。处理收到的其它worker的request，判断相应tensor能否reduce
       for (int i = 1; i < size_; ++i) {
         LOG(TRACE) << "Adding messages from rank " << i;
         auto received_message_list = ready_list[i];
@@ -296,11 +304,12 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         }
       }
 
-      // Check if tensors from previous ticks are ready to reduce after Joins.
-      // Joins具体代表什么操作？
+      // Check if tensors from previous ticks are ready to reduce after Joins. 为什么是previous tick?
+      // Join具体代表什么操作？
       if (state.joined_size > 0) {
         for (auto& table_iter : message_table_) {
           int count = (int)table_iter.second.size();
+          // 如果所有的 rank 都发来了这个 tensor 的 request，且这个 tensor 不在 ready_to_reduce 列表里
           if (count == (size_ - state.joined_size) &&
               std::find(ready_to_reduce.begin(), ready_to_reduce.end(),
                         table_iter.first) == ready_to_reduce.end()) {
@@ -313,9 +322,9 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       // At this point, rank zero should have a fully updated tensor count
       // table and should know all the tensors that need to be reduced or
       // gathered, and everyone else should have sent all their information
-      // to rank zero. We can now do reductions and gathers; rank zero will
-      // choose which ones and in what order, and will notify the other ranks
-      // before doing each reduction.
+      // to rank zero. We can now do reductions and gathers
+      // rank zero will choose which ones and in what order, and will 
+      // notify the other ranks before doing each reduction.
       std::deque<Response> responses;
 
       if (response_cache_.capacity() > 0) {
@@ -331,7 +340,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         }
       }
 
-      for (auto& tensor_name : ready_to_reduce) {
+      for (auto& tensor_name : ready_to_reduce) {  //为每个要reduce的tensor构造一个response消息
         Response response = ConstructResponse(tensor_name, state.joined_size);
         responses.push_back(std::move(response));
       }
@@ -343,20 +352,20 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         responses.push_back(std::move(join_response));
         state.joined_size = 0;
       }
-
+      //把符合条件的response合并，降低通信开销
       // ready_to_reduce 转换为responses，然后再经过FuseResponses 转换为最终的response_list
       // TODO 记录合并前responses
       response_list = FuseResponses(responses, state);
       // TODO 记录合并前response_list
       response_list.set_shutdown(should_shut_down);
 
-      // Broadcast final results to other ranks.
+      
+      // Broadcast final results to other ranks.在controller子类中实现
       // TODO 记录开始前时间
       SendFinalTensors(response_list);
       // TODO 记录开始后时间
 
-    } else {
-      // 不是rank0 不是coordinator
+    } else {         //worker的工作
       RequestList message_list;
       message_list.set_shutdown(should_shut_down);
       while (!message_queue_tmp.empty()) {
@@ -364,7 +373,11 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         message_queue_tmp.pop_front();
       }
 
+
+      
       // Send ready tensors to rank zero
+      //把message_list中的request通过一个MPI_GATHER操作发给rank0
+
       // TODO 记录 worker 传送给 coordinator 的数据以及时间
       // 数据量通过massage_list获取
       // tensor_shape()
@@ -391,6 +404,10 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     }
   }
 
+
+  //至此，coordination阶段的通信全部完成。
+  /*-------------------------------------------------------------------------------*/
+  
   if (!response_list.responses().empty()) {
     std::string tensors_ready;
     for (const auto& r : response_list.responses()) {
@@ -721,7 +738,7 @@ Response Controller::ConstructResponse(std::string& name, int joined_size) {
 }
 
 void Controller::CoordinateCacheAndState(CacheCoordinator& cache_coordinator) {
-  // Sync cache and state information across workers.
+  // Sync cache and state information across workers. 完成实际的协调过程
   cache_coordinator.sync(shared_from_this(), timeline_enabled_);
 
   // If invalid cache entries exist, erase associated entries.
@@ -747,6 +764,12 @@ void Controller::CoordinateCacheAndState(CacheCoordinator& cache_coordinator) {
   }
 }
 
+//把多个response里的内容放入一个response对象(需满足如下条件)，再把这些response对象放入ResponseList返回
+//1.执行的操作类型相同
+//2.在同一个设备上
+//3.tensor类型相同
+//4.tensor大小之和不超过tensor fusion buffer大小
+//5.prescale_factor和postscale_factor相同
 ResponseList Controller::FuseResponses(std::deque<Response>& responses,
                                        HorovodGlobalState& state) {
   ResponseList response_list;
@@ -759,7 +782,8 @@ ResponseList Controller::FuseResponses(std::deque<Response>& responses,
     if (response.response_type() == Response::ResponseType::ALLREDUCE ||
         response.response_type() == Response::ResponseType::ADASUM) {
       // Attempt to add more responses to this fused response.
-
+      //因为一个response里可能会包含多个tensor的信息，所以tensor_sizes是个vector
+      //执行response fuse前，response里只包含一个tensor的信息
       tensor_size = response.tensor_sizes()[0] * GetTypeSize(response.tensor_type());
 #if HAVE_CUDA
       if (state.batch_d2d_memcopies) {
@@ -796,7 +820,7 @@ ResponseList Controller::FuseResponses(std::deque<Response>& responses,
           response.add_tensor_name(std::move(new_response.tensor_names()[0]));
           response.add_tensor_size(new_response.tensor_sizes()[0]);
           responses.pop_front();
-        } else {
+        } else {  //不能fuse
           // In general, don't try to fuse additional tensors since they are
           // usually computed in order of requests and skipping tensors may
           // mean that the batch will have to wait longer while skipped
@@ -913,16 +937,20 @@ int Controller::GetLocalSizeAtCrossRank(int i) {
   return local_sizes_for_cross_rank_[i];
 }
 
+/*判断Request中的tensor是否在所有的rank上都准备好了(可以进行allreduce)，该方法只在coordinator上运行
+  message_table_是一个map，保存了coordinator收到的所有request消息。key是Tensor name, value是一个vector，
+  长度是rank的个数，其中的元素是每个rank发来的request。当这个vector填满的时候，对应的tensor就可以进行allreduce了
+*/
 bool Controller::IncrementTensorCount(const Request& msg, int joined_size) {
   auto& name = msg.tensor_name();
   auto table_iter = message_table_.find(name);
-  if (table_iter == message_table_.end()) {
+  if (table_iter == message_table_.end()) {               //msg不在message_table_中，则加入
     std::vector<Request> messages = {msg};
-    messages.reserve(static_cast<unsigned long>(size_));
+    messages.reserve(static_cast<unsigned long>(size_));  //size_是rank的个数
     message_table_.emplace(name, std::move(messages));
     table_iter = message_table_.find(name);
-    timeline_.NegotiateStart(name, msg.request_type());
-  } else {
+    timeline_.NegotiateStart(name, msg.request_type());   //对应Tensor的negotiation过程开始
+  } else {                                               //msg已经在message_table_中，则把msg加入对应的vector   
     std::vector<Request>& messages = table_iter->second;
     messages.push_back(msg);
   }
@@ -931,8 +959,8 @@ bool Controller::IncrementTensorCount(const Request& msg, int joined_size) {
 
   std::vector<Request>& messages = table_iter->second;
   int count = (int)messages.size();
-  bool ready_to_reduce = count == (size_ - joined_size);
-  if (ready_to_reduce) {
+  bool ready_to_reduce = count == (size_ - joined_size);  //处于Join状态的rank不参与allreduce(等待状态)
+  if (ready_to_reduce) {                                //Tensor可以进行allreduce，coordination过程结束
     timeline_.NegotiateEnd(name);
   }
   return ready_to_reduce;

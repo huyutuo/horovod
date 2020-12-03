@@ -67,16 +67,17 @@ public:
   //
   // The coordinator follows a master-worker paradigm. Rank zero acts
   // as the master (the "coordinator"), whereas all other ranks are simply
-  // workers. Each worker maintains a cache of tensors that are previously
-  // broadcasted as ready by other ranks. If the cache covers all incoming
-  // messages, there's no need for workers to do additional communications.
+  // workers. Each worker maintains a cache(Response Cache) of tensors that 
+  // are previously broadcasted as ready by other ranks. If the cache 
+  // covers all incoming messages, there's no need for workers to do additional 
+  // communications.
   // Otherwise, workers will communicate with each other to agree on what
   // tensors to be processed. The communication performs as following:
   //
   //      a) The workers send a Request to the coordinator, indicating what
   //      they would like to do (which tensor they would like to gather and
   //      reduce, as well as their shape and type). They repeat this for every
-  //      tensor that they would like to operate on.
+  //      tensor that they would like to operate on. 每个tensor一个Request.
   //
   //      b) The workers send an empty "DONE" message to the coordinator to
   //      indicate that there are no more tensors they wish to operate on.
@@ -88,7 +89,9 @@ public:
   //
   //      d) The coordinator finds all tensors that are ready to be reduced,
   //      gathered, or all operations that result in an error. For each of
-  //      those, it sends a Response to all the workers. When no more
+  //      those, it sends a Response to all the workers(一个Response里可能会有多个
+  //      tensor，发给所有的worker。每个Response对象对应一个collective operation操作。
+  //      这些tensor放在fusion buffer里). When no more
   //      Responses are available, it sends a "DONE" response to the workers.
   //      If the process is being shutdown, it instead sends a "SHUTDOWN"
   //      response.
@@ -178,7 +181,7 @@ protected:
   int rank_ = 0;
   int local_rank_ = 0;
   int cross_rank_ = 0;
-  int size_ = 1;
+  int size_ = 1;    //rank的个数
   int local_size_ = 1;
   int cross_size_ = 1;
   bool is_coordinator_ = false;

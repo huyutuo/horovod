@@ -189,6 +189,7 @@ private:
   std::vector<int64_t> shape_;
 };
 
+//子类在horovod/torch,horovod/tensorflow等目录下
 class ReadyEvent {
 public:
   virtual bool Ready() const = 0;
@@ -197,6 +198,7 @@ public:
 
 class OpContext;
 
+//子类在horovod/torch,horovod/tensorflow等目录下
 class PersistentBuffer {
 public:
   virtual const void* AccessData(std::shared_ptr<OpContext> context) const = 0;

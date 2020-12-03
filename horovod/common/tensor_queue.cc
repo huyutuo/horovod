@@ -24,6 +24,7 @@ namespace horovod {
 namespace common {
 
 // Add a TensorTableEntry as well as its message to the queue.
+// 反向传播计算出来的每个梯度，都会加入tensor queue（由python前端一步步调用而来）
 Status TensorQueue::AddToTensorQueue(TensorTableEntry& e, Request& message) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (tensor_table_.find(e.tensor_name) != tensor_table_.end()) {
@@ -88,6 +89,7 @@ void TensorQueue::GetTensorEntriesFromResponse(
 
       if (!joined) {
         // We should never fail at finding this key in the tensor table.
+        // 因为tensor_table_中都是已经计算出来的梯度，所以name一定会在其中
         auto iter = tensor_table_.find(name);
         assert(iter != tensor_table_.end());
 
