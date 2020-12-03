@@ -71,7 +71,7 @@ Status MPIAllreduce::Execute(std::vector<TensorTableEntry>& entries, const Respo
   // Copy memory out of the fusion buffer.
   if (entries.size() > 1) {
     timeline.ActivityStartAll(entries, MEMCPY_OUT_FUSION_BUFFER);
-    MemcpyOutFusionBuffer(buffer_data, entries);
+    MemcpyOutFusionBuffer(buffer_data, entries); //把buffer_data里的数据拷贝到entries
     timeline.ActivityEndAll(entries);
   }
 
