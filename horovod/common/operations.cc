@@ -273,6 +273,7 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
           [&]() { timeline.ActivityStartAll(entries, INIT_FUSION_BUFFER); },
           [&]() { timeline.ActivityEndAll(entries); });
       if (!status.ok()) {
+        LOG(DEBUG, horovod_global.controller->GetRank()) << "InitializeBuffer Failed";
         for (auto& e : entries) {
           timeline.End(e.tensor_name, nullptr);
           // Callback can be null if the rank sent Join request.
@@ -315,6 +316,7 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
   try {
     status = op_manager->ExecuteOperation(entries, response);  //执行操作
   } catch (const std::exception& ex) {
+    LOG(DEBUG, horovod_global.controller->GetRank()) << "ExecuteOperation Failed";
     status = Status::UnknownError(ex.what());
   }
 
@@ -351,6 +353,7 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
 //      make progress if we have a thread pool limit.
 bool RunLoopOnce(HorovodGlobalState& state);
 
+// horovod.init()之后，此线程一直在后执行
 void BackgroundThreadLoop(HorovodGlobalState& state) {
 #if HAVE_CCL
   // Initialize ccl context
@@ -415,6 +418,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
 #endif
 
   // Open the timeline file on coordinator.
+  // 只在coordinator上产生timeline文件
   auto timeline_env = std::getenv(HOROVOD_TIMELINE);
   auto horovod_timeline = timeline_env != nullptr ? std::string(timeline_env) : std::string("");
   bool should_enable_timeline = false;
@@ -422,9 +426,12 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
     state.timeline.Initialize(horovod_timeline,
                               static_cast<unsigned int>(size));
   }
-  if (horovod_timeline != "") {
-      should_enable_timeline = true;
+
+  should_enable_timeline = true;
+  if (horovod_timeline == "DISABLED") {
+    should_enable_timeline = false;
   }
+
   state.controller->SetTimelineEnabled(should_enable_timeline);
 
   ParseStallInspectorFromEnv(state.controller->GetStallInspector());
@@ -435,6 +442,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
   state.mark_cycles_in_timeline = mark_cycles;
 
   // Override Tensor Fusion threshold, if it's set.
+  // 重写Tensor Fusion大小
   state.parameter_manager.SetTensorFusionThresholdBytes(64 * 1024 * 1024);
   auto horovod_fusion_threshold = std::getenv(HOROVOD_FUSION_THRESHOLD);
   if (horovod_fusion_threshold != nullptr) {
@@ -488,6 +496,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
 #endif
 
   // Issue warning if hierarchical allreduce is enabled in heterogeneous cluster
+  // 异构集群
   if (is_coordinator &&
       (state.parameter_manager.HierarchicalAllreduce() ||
        state.parameter_manager.HierarchicalAllgather()) &&
@@ -498,6 +507,14 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
            "hierarchical allreduce. Consider assigning the same "
            "number of ranks to each node, or disabling hierarchical "
            "allgather and hierarchical allreduce.";
+  }
+
+  // Set flag to control use of batched memcopy kernel on GPU
+  auto horovod_batch_d2d_memcopies =
+      std::getenv(HOROVOD_BATCH_D2D_MEMCOPIES);
+  if (horovod_batch_d2d_memcopies != nullptr &&
+      std::strtol(horovod_batch_d2d_memcopies, nullptr, 10) == 0) {
+    state.batch_d2d_memcopies = false;
   }
 
   // Enable auto-tuning.
@@ -525,6 +542,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
   LOG(INFO, horovod_global.controller->GetRank()) << "Horovod Initialized";
 
   // Iterate until shutdown.
+  // 在之前初始化state中的一些参数，然后一直执行RunLoopOnce
   try {
     while (RunLoopOnce(state));
   } catch (const std::exception& ex) {
@@ -591,8 +609,8 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   auto response_list =
       state.controller->ComputeResponseList(horovod_global.shut_down, state);
 
-  state.mark_cycles_in_timeline = state.controller->MarkCyclesInTimelinePending();
-  state.controller->SynchronizeTimelineEnabled();
+  state.mark_cycles_in_timeline =
+      state.controller->MarkCyclesInTimelinePending();
 
   // Get tensor name and size data for autotuning.
   int64_t total_tensor_size = 0;
@@ -612,6 +630,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     LOG(TRACE, rank) << "Performing " << response.tensor_names_string();
     LOG(TRACE, rank) << "Processing " << response.tensor_names().size()
                      << " tensors";
+    // TODO 记录每次perform操作的时间，以及类型
     PerformOperation(response, horovod_global);
     LOG(TRACE, rank) << "Finished performing "
                      << response.tensor_names_string();
@@ -723,21 +742,11 @@ bool horovod_start_timeline(const char* file_name, bool mark_cycles) {
     return false;
   }
   bool is_coordinator = horovod_global.controller->IsCoordinator();
-  if(horovod_global.controller->TimelineEnabledPending()){
-    LOG(INFO) << " Timeline is already enabled. Please stop timeline before restarting it.";
-    return true;
-  }
   if (is_coordinator) {
     horovod_global.timeline.Initialize(std::string(file_name), horovod_global.controller->GetSize());
     horovod_global.timeline.SetPendingTimelineFile(std::string(file_name));
   }
-  horovod_global.controller->SetTimelineEnabledPending(true);
   horovod_global.controller->SetMarkCyclesInTimelinePending(mark_cycles);
-  // block until timeline is started
-  while(! horovod_global.controller->TimeLineEnabled()){
-    LOG(DEBUG)<< " Start timeline not yet synchronized.";
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
   return true;
 }
 
@@ -752,12 +761,6 @@ bool horovod_stop_timeline() {
   bool is_coordinator = horovod_global.controller->IsCoordinator();
   if (is_coordinator) {
       horovod_global.timeline.SetPendingTimelineFile(std::string(""));
-  }
-  horovod_global.controller->SetTimelineEnabledPending(false);
-  horovod_global.controller->SetMarkCyclesInTimelinePending(false);
-  while(horovod_global.controller->TimeLineEnabled()){
-    LOG(DEBUG)<< " Stop timeline not yet synchronized.";
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   return true;
 }

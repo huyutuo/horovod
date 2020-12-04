@@ -77,7 +77,7 @@ def _check_function(function_factory, tensor):
         raise ValueError('Tensor is required to be contiguous.')
     return function
 
-
+# mpi_ops_v2.cc 中将c函数转化为py形式
 def _allreduce_function_factory(tensor):
     return 'horovod_torch_allreduce_async_' + tensor.type().replace('.', '_')
 

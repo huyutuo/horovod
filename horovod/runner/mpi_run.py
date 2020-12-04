@@ -157,6 +157,7 @@ def mpi_run(settings, nics, env, command, stdout=None, stderr=None):
     # There is no need to specify localhost.
     hosts_arg = '-H {hosts}'.format(hosts=settings.hosts)
 
+    # 使用NCCL吗
     tcp_intf_arg = '-mca btl_tcp_if_include {nics}'.format(
         nics=','.join(nics)) if nics else ''
     nccl_socket_intf_arg = '-x NCCL_SOCKET_IFNAME={nics}'.format(
@@ -168,9 +169,13 @@ def mpi_run(settings, nics, env, command, stdout=None, stderr=None):
         mpi_impl_flags.append('-mca plm_rsh_no_tree_spawn true')
         mpi_impl_flags.append('-mca plm_rsh_num_concurrent {}'.format(len(host_names)))
 
+    if settings.prefix_output_with_timestamp:
+        mpi_impl_flags.append('--timestamp-output')
+
     binding_args = settings.binding_args if settings.binding_args else ' '.join(impl_binding_args)
 
     # Pass all the env variables to the mpirun command.
+    # 拼接成mpirun 命令
     mpirun_command = (
         'mpirun --allow-run-as-root --tag-output '
         '-np {num_proc} {hosts_arg} '
@@ -210,6 +215,7 @@ def mpi_run(settings, nics, env, command, stdout=None, stderr=None):
             env[var] = os.environ[var]
 
     # Execute the mpirun command.
+    # 运行之前拼接好的mpirun命令
     if settings.run_func_mode:
         exit_code = safe_shell_exec.execute(mpirun_command, env=env, stdout=stdout, stderr=stderr)
         if exit_code != 0:

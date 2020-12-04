@@ -14,6 +14,7 @@
 # =============================================================================
 
 
+# horovodrun 命令的参数解析，初始化
 class _HorovodArgs(object):
     def __init__(self):
         self.np = 1
@@ -74,7 +75,8 @@ class _HorovodArgs(object):
 
         # logging arguments
         self.log_level = None
-        self.log_hide_timestamp = None
+        self.log_with_timestamp = None
+        self.prefix_output_with_timestamp = None
 
         # host arguments
         self.hosts = None
