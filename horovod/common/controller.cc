@@ -17,6 +17,8 @@
 
 #include "controller.h"
 
+#include <sys/time.h>
+
 #include <atomic>
 #include <map>
 #include <queue>
@@ -70,6 +72,10 @@ void Controller::Initialize() {
 //都在该函数中完成
 ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                                              HorovodGlobalState& state) {
+  struct timeval start_time;
+  struct timeval end_time;
+  unsigned long time_taken;
+
   // Update cache capacity if autotuning is active.
   if (parameter_manager_.IsAutoTuning()) {
     response_cache_.set_capacity((int)parameter_manager_.CacheEnabled() *
@@ -149,21 +155,21 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // a shutdown. This function removes any invalid cache entries, if they
     // exist.
     //---------------在这里，worker之间通过bitvector的allreduce操作完成协调过程------------
-    // 记录同步开始时间
-    LOG(TRACE) << "iietest: " << "开始进行 CoordinateCacheAndState。通过bitvector的allreduce进行协调"; 
+    LOG(TRACE) << "iietest: " << "开始进行 CoordinateCacheAndState。通过responsecache进行协调"; 
+    gettimeofday(&start_time, NULL);
     CoordinateCacheAndState(cache_coordinator);
-    LOG(TRACE) << "iietest: " << "结束 CoordinateCacheAndState。通过bitvector的allreduce进行协调"; 
-    // 记录同步结束时间
-    
+    gettimeofday(&end_time, NULL);
+    time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+    LOG(TRACE) << "iietest: " << "结束 CoordinateCacheAndState，耗时：" << time_take << "ms"; 
+       
     // Remove uncommon cached tensors from queue and replace to state
     // queue for next cycle. Skip adding common cached tensors to
     // queue as they are handled separately.
 
     // 经过CoordinateCacheAndState(cache_coordinator) 之后，现在 cache_coordinator
     // 中访存的都是common cache hits and cache invalidations ,下面将不在更新后的
-    // cache_coordinator中的 Request处理出来，然后放入tensor_queue_中，下一轮进行处理
+    // cache_coordinator中的Request处理出来，然后放入tensor_queue_中，下一轮进行处理
 
-    // cache_coordinator 与 response_cache的作用与区别分别是什么?
     std::deque<Request> messages_to_replace;
     size_t num_messages = message_queue_tmp.size();
     for (size_t i = 0; i < num_messages; ++i) {
@@ -192,8 +198,6 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
   // message_queue_tmp 是这轮需要协调的所有Request
   if (!message_queue_tmp.empty()) {
-    LOG(TRACE, rank_) << "Sent " << message_queue_tmp.size()
-                      << " messages to coordinator.";
     LOG(TRACE, rank_) << "iietest: " << "Sent " << message_queue_tmp.size()
                       << " messages to coordinator.";
   }
@@ -207,7 +211,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // if cache is enabled and no uncached new message coming in, no need for
     // additional communications
     need_communication = false;
-
+    
     // If no messages to send, we can simply return an empty response list;
     if (cache_coordinator.cache_hits().empty()) {
       LOG(TRACE) << "iietest: 没有message需要发送,返回空response list";
@@ -233,8 +237,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     }
 
     // Fuse responses as normal.
-    // FuseResponses 用来将 满足要求的responses合并
-    // 合并前的responses 与合并后的 response_list 进行比较
+    // FuseResponses 用来将满足要求的responses合并
+    // 合并前的responses与合并后的 response_list 进行比较
 
     // 合并前信息
     LOG(TRACE, rank_) << "iietest: responses合并前";
@@ -284,8 +288,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     std::vector<std::string> ready_to_reduce;
 
     if (is_coordinator_) {  //rank0的工作
-      LOG(TRACE, rank_) << "Adding messages from rank 0";
-      LOG(TRACE) << "iietest: Adding messages from rank 0";
+      LOG(TRACE, rank_) << "iietest: Adding messages from rank 0";
 
       //这个循环首先处理的是rank0本身ready的Tensor,接收其它worker的request并处理在该循环之后，同样的代码逻辑
       while (!message_queue_tmp.empty()) {      
