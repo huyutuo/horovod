@@ -70,6 +70,25 @@ void Controller::Initialize() {
   DoInitialization();
 }
 
+//为profiling增加的函数定义
+void Print_Response_Info(std::string prefix_str, std::deque<Response> responses, int rank) {
+  std::stringstream ss;
+  int total_size;
+
+  ss << prefix_str << rank;
+  for (auto& response : responses) {
+    total_size = 0;
+    for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
+      total_size += size;          
+    }
+    ss << ";num of tensors in a response:" << response.tensor_sizes().size()
+       << ";Response Type:" << response.ResponseType_Name(response.response_type())                 
+       << ";Tensor Name:" << response.tensor_names_string()
+       << ";Tensor Size:" << total_size;           
+  }
+  LOG(TRACE) << ss.str() << std::endl;
+}
+
 //coordination阶段的通信（通过response cache或worker-coordinator直接的request/response）
 //都在该函数中完成
 ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
@@ -78,8 +97,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
   struct timeval start_time;
   struct timeval end_time;
   unsigned long time_taken;
-  int total_size;
-  std::string str1;
+  int total_size;  
   std::stringstream ss;
 
   // Update cache capacity if autotuning is active.
@@ -91,7 +109,6 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
   // Copy the data structures out from parameters.
   // However, don't keep the lock for the rest of the loop, so that
   // enqueued stream callbacks can continue.
-
   CacheCoordinator cache_coordinator(response_cache_.num_active_bits());
 
   // message queue used only in this cycle
@@ -166,13 +183,12 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // a shutdown. This function removes any invalid cache entries, if they
     // exist.
     //---------------在这里，worker之间通过bitvector的allreduce操作完成协调过程------------
-    LOG(TRACE) << "iietest: " << "开始进行 CoordinateCacheAndState。通过responsecache进行协调"; 
     gettimeofday(&start_time, NULL);
     CoordinateCacheAndState(cache_coordinator);
     gettimeofday(&end_time, NULL);
     time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec)
                  + (end_time.tv_usec-start_time.tv_usec) / 1000;
-    LOG(TRACE) << "iietest: " << "结束 CoordinateCacheAndState，耗时："
+    LOG(TRACE) << "iietest: " << "ResponseCache同步，耗时："
                << time_taken << "ms"; 
        
     // Remove uncommon cached tensors from queue and replace to state
@@ -227,7 +243,6 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     
     // If no messages to send, we can simply return an empty response list;
     if (cache_coordinator.cache_hits().empty()) {
-      LOG(TRACE) << "iietest: 没有message需要发送,返回空response list";
       return response_list;
     }
     // otherwise we need to add cached messages to response list.
@@ -237,8 +252,6 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // If all messages in queue have responses in cache, use fast path with
     // no additional coordination.
     // 如果所有在queue中的request 在 responses cache中都存在，则不需要communication
-    LOG(TRACE) << "iietest: 不需要进行communication";
-
     std::deque<Response> responses;
     // Convert cache hits to responses. Populate so that least
     // recently used responses get priority. All workers call the code
@@ -252,58 +265,16 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // Fuse responses as normal.
     // FuseResponses 用来将满足要求的responses合并
     // 合并前的responses与合并后的 response_list 进行比较
-
-    // 合并前信息
-    ss.str("");
-    ss << "iietest: no need comm. before FuseResponses:" << rank_;
-    for (auto& response : responses) {
-      total_size = 0;
-      for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
-        total_size += size;          
-      }
-      ss << ";Response Type:" << response.ResponseType_Name(response.response_type())                 
-         << ";Tensor Name:" << response.tensor_names_string()
-         << ";Tensor Size:" << total_size;           
-    }
-    LOG(TRACE) << ss.str() << std::endl;    
-          
+    Print_Response_Info("iietest: no need comm. before FuseResponses:", responses, rank_);
+    
     gettimeofday(&start_time, NULL);
     response_list = FuseResponses(responses, state);
     gettimeofday(&end_time, NULL);
     time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
                  + (end_time.tv_usec - start_time.tv_usec) / 1000;
     LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
-
-    ss.str("");
-    ss << "iietest: no need comm. after FuseResponses:" << rank_;
-    for (auto& response : responses) {
-      total_size = 0;
-      for (auto& size : response.tensor_sizes()) {
-        total_size += size;          
-      }
-      ss << ";ResponseType:" << response.ResponseType_Name(response.response_type())                 
-         << ";Tensor Name:" << response.tensor_names_string()
-         << ";Tensor size:" << total_size;           
-    }
-    LOG(TRACE) << ss.str() << std::endl;
-
-
-
-
-    for (auto& response : response_list.responses()) {
-      LOG(TRACE) << "iietest: " << "-------------------------------------";
-      LOG(TRACE) << "iietest:  response.ResponseType_Name: "
-        << response.ResponseType_Name(response.response_type());
-      LOG(TRACE) << "iietest: response.tensor_names_string: "
-        << response.tensor_names_string();
-      
-      LOG(TRACE) << "iietest: response.tensor_size():";
-      for (auto& size : response.tensor_sizes()) {
-        LOG(TRACE) << "iietest: response.tensor_size : " << size;
-      }
-      LOG(TRACE) << "iietest: " << "-------------------------------------";
-    }
-
+    
+    Print_Response_Info("iietest: no need comm. after FuseResponses:", responses, rank_);
     response_list.set_shutdown(cache_coordinator.should_shut_down());
   } else {  //worker和coordinator通信的部分。request和response的通信都在下面这段代码中
     // There are uncached messages coming in, need communication to figure out
@@ -349,14 +320,13 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       //该方法在controller的子类中实现,ready_to_reduce 在mpi实现里并没有用上
       //通过mpi gather接收其他rank发来的RequestList（按 rank 顺序放入 ready_list）
       // 记录同步前时间
-      LOG(TRACE) << "iietest: " << "RecvReadyTensors前";
-
+      gettimeofday(&start_time, NULL);
       RecvReadyTensors(ready_to_reduce, ready_list);
-
-      // 记录同步后时间
-      LOG(TRACE) << "iietest: " << "RecvReadyTensors后";
+      gettimeofday(&end_time, NULL);
+      time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
+                   + (end_time.tv_usec - start_time.tv_usec) / 1000;
+      LOG(TRACE) << "iietest: rank0接收请求耗时：" << time_taken;   
       
-
       // Process messages. 循环从1开始，不包括rank0本身。处理收到的其它worker的request，判断相应tensor能否reduce
       for (int i = 1; i < size_; ++i) {
         LOG(TRACE) << "Adding messages from rank " << i;
@@ -432,19 +402,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         state.joined_size = 0;
       }
       
-      ss.str("");
-      ss << "iietest: need comm. before FuseResponses:" << rank_;
-      for (auto& response : responses) {
-        total_size = 0;
-        for (auto& size : response.tensor_sizes()) {
-          total_size += size;          
-        }
-        ss << ";ResponseType:" << response.ResponseType_Name(response.response_type())                 
-           << ";Tensor Name:" << response.tensor_names_string()
-           << ";Tensor size:" << total_size;           
-      }
-      LOG(TRACE) << ss.str() << std::endl;
-      
+      Print_Response_Info("iietest: need comm. before FuseResponses:", responses, rank_);
+            
       //把符合条件的response合并，降低通信开销
       // ready_to_reduce 转换为responses，然后再经过FuseResponses 转换为最终的response_list
       gettimeofday(&start_time, NULL);
@@ -454,21 +413,9 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                    + (end_time.tv_usec - start_time.tv_usec) / 1000;
       
       LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
-      ss.str("");
-      ss << "iietest: after FuseResponses:" << rank_;
-      for (auto& response : responses) {
-        total_size = 0;
-        for (auto& size : response.tensor_sizes()) {
-          total_size += size;          
-        }
-        ss << ";ResponseType:" << response.ResponseType_Name(response.response_type())                 
-           << ";Tensor Name:" << response.tensor_names_string()
-           << ";Tensor size:" << total_size;           
-      }
-      LOG(TRACE) << ss.str() << std::endl;
+      Print_Response_Info("iietest: need comm. before FuseResponses:", responses, rank_);
       
       response_list.set_shutdown(should_shut_down);
-
       
       // Broadcast final results to other ranks.在controller子类中实现
       gettimeofday(&start_time, NULL);
@@ -552,16 +499,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
   //至此，coordination阶段的通信全部完成。
   /*-------------------------------------------------------------------------------*/
-  
-  if (!response_list.responses().empty()) {
-    std::string tensors_ready;
-    for (const auto& r : response_list.responses()) {
-      tensors_ready += r.tensor_names_string() + "; ";
-    }
-    LOG(TRACE) << "iietest: Sending ready responses as " << tensors_ready;
-  }
-
-  // If need_communication is false, meaning no uncached message coming in,
+ 
+   // If need_communication is false, meaning no uncached message coming in,
   // thus no need to update cache.
   // 将此次得到的response 放入response_cache_ 中
   if (need_communication && response_cache_.capacity() > 0) {

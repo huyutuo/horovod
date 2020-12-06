@@ -646,10 +646,12 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   gettimeofday(&preform_start_time, NULL);
   int rank = state.controller->GetRank();
   for (auto& response : response_list.responses()) {
-    LOG(TRACE, rank) << "iietest: " << "Performing " << response.tensor_names_string();
-    LOG(TRACE, rank) << "iietest: " << "Processing " << response.tensor_names().size()
-                     << "iietest: " << " tensors";
-
+    int total_size = 0;
+    for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
+      total_size += size;          
+    }
+    LOG(TRACE, rank) << "iietest: " << "Processing " << response.tensor_sizes().size()
+                     << " tensors, total size:" << total_size;                 
     gettimeofday(&start_time, NULL);
     PerformOperation(response, horovod_global);
     gettimeofday(&end_time, NULL);
@@ -657,9 +659,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
                  + (end_time.tv_usec - start_time.tv_usec) / 1000;
  
-    LOG(TRACE, rank) << "iietest: " << "Finished performing "
-                     << response.tensor_names_string()
-                     << ", 执行performing共耗时："
+    LOG(TRACE, rank) << "iietest: " << "执行allreduce共耗时:"
                      << time_taken << "ms"; 
   }
 
