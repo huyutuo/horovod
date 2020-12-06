@@ -174,7 +174,7 @@ public:
   const std::string DebugString() const;
   int dims() const;
   int64_t dim_size(int idx) const;
-  int64_t num_elements() const;
+  int64_t num_elements() const;  //Tensor中有多少个元素
   const std::vector<int64_t>& to_vector() const;
 
   inline bool operator==(const TensorShape& rhs) const {

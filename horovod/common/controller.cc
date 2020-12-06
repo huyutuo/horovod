@@ -24,6 +24,8 @@
 #include <queue>
 #include <set>
 #include <unordered_set>
+#include <string>
+#include <sstream>
 
 #include "global_state.h"
 #include "logging.h"
@@ -72,9 +74,13 @@ void Controller::Initialize() {
 //都在该函数中完成
 ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                                              HorovodGlobalState& state) {
+  //为profiling增加的变量定义
   struct timeval start_time;
   struct timeval end_time;
   unsigned long time_taken;
+  int total_size;
+  std::string str1;
+  std::stringstream ss;
 
   // Update cache capacity if autotuning is active.
   if (parameter_manager_.IsAutoTuning()) {
@@ -89,11 +95,13 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
   CacheCoordinator cache_coordinator(response_cache_.num_active_bits());
 
   // message queue used only in this cycle
-  // 从tensor_queue_ 中将message_queue_tmp填充
+  // 从tensor_queue_中将message_queue_tmp填充
 
   // JOIN 是什么操作？
   std::deque<Request> message_queue_tmp;
   tensor_queue_.PopMessagesFromQueue(message_queue_tmp);  //tensor_queue_是算出来的梯度
+  int num_hit = 0, num_valid = 0;
+
   for (auto& message : message_queue_tmp) {
     if (message.request_type() == Request::JOIN) {
       state.joined = true;
@@ -108,7 +116,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       if (cache_ == ResponseCache::CacheState::HIT) {   //如果在
         uint32_t cache_bit = response_cache_.peek_cache_bit(message);
         cache_coordinator.record_hit(cache_bit);
-
+        num_hit++;
         // Record initial time cached tensor is encountered in queue.
         stall_inspector_.RecordCachedTensorStart(message.tensor_name());
 
@@ -116,6 +124,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         if (cache_ == ResponseCache::CacheState::INVALID) {
           uint32_t cache_bit = response_cache_.peek_cache_bit(message);
           cache_coordinator.record_invalid_bit(cache_bit);
+          num_invalid++;
         }
         cache_coordinator.set_uncached_in_queue(true);
 
@@ -124,6 +133,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       }
     }
   }
+  LOG(TRACE) << "iietest: num of request hit cache:" << num_hit << ", cache invalid:" << num_invalid;
 
   // join集合在一块操作？ 如果state.joined 将response_cache_中的request所对应的bit全部放入cache_coordinator
   if (state.joined && response_cache_.capacity() > 0) {
@@ -241,25 +251,41 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     // 合并前的responses与合并后的 response_list 进行比较
 
     // 合并前信息
-    LOG(TRACE, rank_) << "iietest: responses合并前";
+    ss.str("");
+    ss << "iietest: no need comm. before FuseResponses:" << rank_;
     for (auto& response : responses) {
-      LOG(TRACE) << "iietest: " << "-------------------------------------";
-      LOG(TRACE) << "iietest:  response.ResponseType_Name: "
-        << response.ResponseType_Name(response.response_type());
-      LOG(TRACE) << "iietest: response.tensor_names_string: "
-        << response.tensor_names_string();
-      
-      LOG(TRACE) << "iietest: response.tensor_size():";
-      for (auto& size : response.tensor_sizes()) {
-        LOG(TRACE) << "iietest: response.tensor_size : " << size;
+      total_size = 0;
+      for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
+        total_size += size;          
       }
-      LOG(TRACE) << "iietest: " << "-------------------------------------";
+      ss << ";Response Type:" << response.ResponseType_Name(response.response_type())                 
+         << ";Tensor Name:" << response.tensor_names_string()
+         << ";Tensor Size:" << total_size;           
     }
-    
+    LOG(TRACE) << ss.str() << endl;    
+          
+    gettimeofday(&start_time, NULL);
     response_list = FuseResponses(responses, state);
-    
-    // 合并后信息
-    LOG(TRACE, rank_) << "iietest: responses合并后";
+    gettimeofday(&end_time, NULL);
+    time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+    LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
+
+    ss.str("");
+    ss << "iietest: no need comm. after FuseResponses:" << rank_;
+    for (auto& response : responses) {
+      total_size = 0;
+      for (auto& size : response.tensor_sizes()) {
+        total_size += size;          
+      }
+      ss << ";ResponseType:" << response.ResponseType_Name(response.response_type())                 
+         << ";Tensor Name:" << response.tensor_names_string()
+         << ";Tensor size:" << total_size;           
+    }
+    LOG(TRACE) << ss.str() << endl;
+
+
+
+
     for (auto& response : response_list.responses()) {
       LOG(TRACE) << "iietest: " << "-------------------------------------";
       LOG(TRACE) << "iietest:  response.ResponseType_Name: "
@@ -401,49 +427,50 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         responses.push_back(std::move(join_response));
         state.joined_size = 0;
       }
+      
+      ss.str("");
+      ss << "iietest: need comm. before FuseResponses:" << rank_;
+      for (auto& response : responses) {
+        total_size = 0;
+        for (auto& size : response.tensor_sizes()) {
+          total_size += size;          
+        }
+        ss << ";ResponseType:" << response.ResponseType_Name(response.response_type())                 
+           << ";Tensor Name:" << response.tensor_names_string()
+           << ";Tensor size:" << total_size;           
+      }
+      LOG(TRACE) << ss.str() << endl;
+      
       //把符合条件的response合并，降低通信开销
       // ready_to_reduce 转换为responses，然后再经过FuseResponses 转换为最终的response_list
-      // 记录合并前responses
-      LOG(TRACE) << "iietest: responses合并前";
-      for (auto& response : responses) {
-        LOG(TRACE) << "iietest: " << "-------------------------------------";
-        LOG(TRACE) << "iietest: ResponseType:" << response.ResponseType_Name(response.response_type())
-                   << ";response.tensor_names_string:" << response.tensor_names_string();
-        
-        LOG(TRACE) << "iietest: response.tensor_size():";
-        for (auto& size : response.tensor_sizes()) {
-          LOG(TRACE) << "iietest: response.tensor_size : " << size;
-        }
-        LOG(TRACE) << "iietest: " << "-------------------------------------";
-      }
+      gettimeofday(&start_time, NULL);
       response_list = FuseResponses(responses, state);
-
-      // 记录合并后response_list
-      LOG(TRACE) << "iietest: responses合并后";
-      for (auto& response : response_list.responses()) {
-        LOG(TRACE) << "iietest: " << "-------------------------------------";
-        LOG(TRACE) << "iietest:  response.ResponseType_Name: "
-          << response.ResponseType_Name(response.response_type());
-        LOG(TRACE) << "iietest: response.tensor_names_string: "
-          << response.tensor_names_string();
-        
-        LOG(TRACE) << "iietest: response.tensor_size():";
+      gettimeofday(&end_time, NULL);
+      time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+      
+      LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
+      ss.str("");
+      ss << "iietest: after FuseResponses:" << rank_;
+      for (auto& response : responses) {
+        total_size = 0;
         for (auto& size : response.tensor_sizes()) {
-          LOG(TRACE) << "iietest: response.tensor_size : " << size;
+          total_size += size;          
         }
-        LOG(TRACE) << "iietest: " << "-------------------------------------";
+        ss << ";ResponseType:" << response.ResponseType_Name(response.response_type())                 
+           << ";Tensor Name:" << response.tensor_names_string()
+           << ";Tensor size:" << total_size;           
       }
-
+      LOG(TRACE) << ss.str() << endl;
       
       response_list.set_shutdown(should_shut_down);
 
       
       // Broadcast final results to other ranks.在controller子类中实现
-      // 记录开始前时间
-      LOG(TRACE) << "iietest: SendFinalTensors开始前";
+      gettimeofday(&start_time, NULL);
       SendFinalTensors(response_list);
-      // 记录开始后时间
-      LOG(TRACE) << "iietest: SendFinalTensors开始前";
+      gettimeofday(&end_time, NULL);
+      time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+      LOG(TRACE) << "iietest: rank0广播耗时：" << time_taken;
     } else {         //worker的工作
       RequestList message_list;
       message_list.set_shutdown(should_shut_down);
@@ -452,8 +479,6 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         message_queue_tmp.pop_front();
       }
 
-
-      
       // Send ready tensors to rank zero
       //把message_list中的request通过一个MPI_GATHER操作发给rank0
 
@@ -463,35 +488,34 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       // root_rank()
       // tensor_name()
       // tensor_shape()
-      LOG(TRACE) << "iietest: " << "发送给coordinator的message具体信息为";
+      ss.str("");
+      ss << "iietest: before " << rank_ <<" MPI_GATHER. ";
       for (auto& request : message_list.requests()) {
-        LOG(TRACE) << "iietest: " << "-------------------------------------";
-        LOG(TRACE) << "iietest: request.RequestType_Name: "
-          << request.RequestType_Name(request.request_type());
-        LOG(TRACE) << "iietest: request.root_rank: "
-          << request.root_rank();
-        LOG(TRACE) << "iietest: request.tensor_name: "
-          << request.tensor_name();
-        LOG(TRACE) << "iietest: request.tensor_type: "
-          << DataType_Name(request.tensor_type());
-        LOG(TRACE) << "iietest: request.tensor_shape():";
+        ss << ";Request type:" << request.RequestType_Name(request.request_type())
+           << ";Root rank:" << request.root_rank()           
+           << ";Tensor Name:" << request.tensor_name()
+           << ";Tensor type:" << DataType_Name(request.tensor_type())
+           << ";Tensor shape:<"; 
+
         for (auto& size : request.tensor_shape()) {
-          LOG(TRACE) << "iietest: request.tensor_shape: " << size;
+           ss << size <<",";
         }
-        LOG(TRACE) << "iietest: " << "-------------------------------------";
+        ss << ">";        
       }
-
-      // 记录当前的时间
-      LOG(TRACE) << "iietest: " << "发送给coordinator的message前";
+      LOG(TRACE) << ss.str() << endl;
+      
+      gettimeofday(&start_time, NULL);
       SendReadyTensors(message_list);
-      // 记录发送后的时间
-      LOG(TRACE) << "iietest: " << "发送给coordinator的message后";
-
+      gettimeofday(&end_time, NULL);
+      time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+      LOG(TRACE) << "iietest: MPI_GATHER耗时：" << time_taken;
 
       // Receive final tensors to be processed from rank zero
-      LOG(TRACE) << "iietest: 从coordinator接受的具体信息前";
+      gettimeofday(&start_time, NULL);
       RecvFinalTensors(response_list);
-      LOG(TRACE) << "iietest: 从coordinator接受的具体信息后";
+      gettimeofday(&end_time, NULL);
+      time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+      LOG(TRACE) << "iietest: 接收Response耗时：" << time_taken;
       // 记录接收完成之后的数据
       // 通过response_list获取
       // response_type()
@@ -499,9 +523,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       // tensor_names_string()
       // error_message()
       // tensor_sizes()
-      
-      LOG(TRACE) << "iietest: 从coordinator接受的具体信息为";
-      int total_size;
+      /*
+      LOG(TRACE) << "iietest: 从coordinator接受的具体信息为";      
       for (auto& response : response_list.responses()) {
         total_size = 0;        
         for (auto& size : response.tensor_sizes()) {
@@ -514,7 +537,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                    << "; Total tensor size:" << total_size;        
         LOG(TRACE) << "iietest: " << "-------------------------------------";
       }
-
+      */
     }
   }
 
@@ -758,7 +781,7 @@ Response Controller::ConstructResponse(std::string& name, int joined_size) {
     for (auto dim : requests[0].tensor_shape()) {
       tensor_shape.AddDim(dim);
     }
-    tensor_sizes.push_back(tensor_shape.num_elements());
+    tensor_sizes.push_back(tensor_shape.num_elements()); //num_elements()返回tensor中有多少个元素
   }
 
   if (message_type == Request::BROADCAST) {
