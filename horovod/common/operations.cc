@@ -605,7 +605,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   if (sleep_duration > std::chrono::steady_clock::duration::zero()) {
     std::this_thread::sleep_for(sleep_duration);
     LOG(TRACE) << "iietest: " << "RunLoopOnce sleep "
-               << sleep_duration.count() << "ms";
+               << sleep_duration.count() / 1000000 << "ms";
   }
   state.last_cycle_start = std::chrono::steady_clock::now();
 
