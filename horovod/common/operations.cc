@@ -19,6 +19,8 @@
 
 #include "operations.h"
 
+#include <sys/time.h>
+
 #include <atomic>
 #include <cassert>
 #include <cstring>
@@ -589,14 +591,21 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
 
 //背景线程的循环体
 bool RunLoopOnce(HorovodGlobalState& state) {
+  LOG(TRACE) << "iietest: " << "开始执行RunLoopOnce";
+  struct timeval start_time;
+  struct timeval end_time;
+  unsigned long time_taken;
   // This delay determines thread frequency and communication message latency
-  auto start_time = std::chrono::steady_clock::now();
+  auto now_time = std::chrono::steady_clock::now();
+  std::chrono::_V2::steady_clock::rep tmp;
   auto sleep_duration = state.last_cycle_start +
                         std::chrono::microseconds(long(
                             state.parameter_manager.CycleTimeMs() * 1000.)) -
-                        start_time;
+                        now_time;
   if (sleep_duration > std::chrono::steady_clock::duration::zero()) {
     std::this_thread::sleep_for(sleep_duration);
+    LOG(TRACE) << "iietest: " << "RunLoopOnce sleep "
+               << sleep_duration.count() << "ms";
   }
   state.last_cycle_start = std::chrono::steady_clock::now();
 
@@ -606,8 +615,16 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   }
 
   //完成coordination。response_list保存了本次循环要进行allreduce的tensor
+  
+  
+  gettimeofday(&start_time, NULL);
   auto response_list =
       state.controller->ComputeResponseList(horovod_global.shut_down, state);
+  gettimeofday(&end_time, NULL);
+  time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec)
+               + (end_time.tv_usec-start_time.tv_usec) / 1000;
+  LOG(TRACE) << "iietest: " << "执行ComputeResponseList共耗时："
+             << time_taken << "ms"; 
 
   state.mark_cycles_in_timeline =
       state.controller->MarkCyclesInTimelinePending();
@@ -625,16 +642,34 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   // Perform the collective operation. All nodes should end up performing
   // the same operation.
   // 除了allreduce，还有gather, broadcast等操作。什么时候会执行到这些操作？
+  struct timeval preform_start_time;
+  gettimeofday(&preform_start_time, NULL);
   int rank = state.controller->GetRank();
   for (auto& response : response_list.responses()) {
-    LOG(TRACE, rank) << "Performing " << response.tensor_names_string();
-    LOG(TRACE, rank) << "Processing " << response.tensor_names().size()
-                     << " tensors";
-    // TODO 记录每次perform操作的时间，以及类型
+    LOG(TRACE, rank) << "iietest: " << "Performing " << response.tensor_names_string();
+    LOG(TRACE, rank) << "iietest: " << "Processing " << response.tensor_names().size()
+                     << "iietest: " << " tensors";
+
+    gettimeofday(&start_time, NULL);
     PerformOperation(response, horovod_global);
-    LOG(TRACE, rank) << "Finished performing "
-                     << response.tensor_names_string();
+    gettimeofday(&end_time, NULL);
+
+    time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
+                 + (end_time.tv_usec - start_time.tv_usec) / 1000;
+ 
+    LOG(TRACE, rank) << "iietest: " << "Finished performing "
+                     << response.tensor_names_string()
+                     << ", 执行performing共耗时："
+                     << time_taken << "ms"; 
   }
+
+  gettimeofday(&end_time, NULL);
+  time_taken = 1000 * (end_time.tv_sec - preform_start_time.tv_sec)
+                + (end_time.tv_usec - preform_start_time.tv_usec) / 1000;
+  LOG(TRACE) << "iietest: " << "执行所有的performing共耗时：" << time_taken << "ms"; 
+
+
+
 
   if (state.parameter_manager.IsAutoTuning()) {
     bool should_sync =

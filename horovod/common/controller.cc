@@ -100,7 +100,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
   // JOIN 是什么操作？
   std::deque<Request> message_queue_tmp;
   tensor_queue_.PopMessagesFromQueue(message_queue_tmp);  //tensor_queue_是算出来的梯度
-  int num_hit = 0, num_valid = 0;
+  int num_hit = 0, num_invalid = 0;
 
   for (auto& message : message_queue_tmp) {
     if (message.request_type() == Request::JOIN) {
@@ -133,7 +133,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       }
     }
   }
-  LOG(TRACE) << "iietest: num of request hit cache:" << num_hit << ", cache invalid:" << num_invalid;
+  LOG(TRACE) << "iietest: num of request hit cache:" << num_hit
+             << ", cache invalid:" << num_invalid;
 
   // join集合在一块操作？ 如果state.joined 将response_cache_中的request所对应的bit全部放入cache_coordinator
   if (state.joined && response_cache_.capacity() > 0) {
@@ -169,8 +170,10 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     gettimeofday(&start_time, NULL);
     CoordinateCacheAndState(cache_coordinator);
     gettimeofday(&end_time, NULL);
-    time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
-    LOG(TRACE) << "iietest: " << "结束 CoordinateCacheAndState，耗时：" << time_take << "ms"; 
+    time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec)
+                 + (end_time.tv_usec-start_time.tv_usec) / 1000;
+    LOG(TRACE) << "iietest: " << "结束 CoordinateCacheAndState，耗时："
+               << time_taken << "ms"; 
        
     // Remove uncommon cached tensors from queue and replace to state
     // queue for next cycle. Skip adding common cached tensors to
@@ -262,12 +265,13 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
          << ";Tensor Name:" << response.tensor_names_string()
          << ";Tensor Size:" << total_size;           
     }
-    LOG(TRACE) << ss.str() << endl;    
+    LOG(TRACE) << ss.str() << std::endl;    
           
     gettimeofday(&start_time, NULL);
     response_list = FuseResponses(responses, state);
     gettimeofday(&end_time, NULL);
-    time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+    time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
+                 + (end_time.tv_usec - start_time.tv_usec) / 1000;
     LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
 
     ss.str("");
@@ -281,7 +285,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
          << ";Tensor Name:" << response.tensor_names_string()
          << ";Tensor size:" << total_size;           
     }
-    LOG(TRACE) << ss.str() << endl;
+    LOG(TRACE) << ss.str() << std::endl;
 
 
 
@@ -439,14 +443,15 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
            << ";Tensor Name:" << response.tensor_names_string()
            << ";Tensor size:" << total_size;           
       }
-      LOG(TRACE) << ss.str() << endl;
+      LOG(TRACE) << ss.str() << std::endl;
       
       //把符合条件的response合并，降低通信开销
       // ready_to_reduce 转换为responses，然后再经过FuseResponses 转换为最终的response_list
       gettimeofday(&start_time, NULL);
       response_list = FuseResponses(responses, state);
       gettimeofday(&end_time, NULL);
-      time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+      time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
+                   + (end_time.tv_usec - start_time.tv_usec) / 1000;
       
       LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
       ss.str("");
@@ -460,7 +465,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
            << ";Tensor Name:" << response.tensor_names_string()
            << ";Tensor size:" << total_size;           
       }
-      LOG(TRACE) << ss.str() << endl;
+      LOG(TRACE) << ss.str() << std::endl;
       
       response_list.set_shutdown(should_shut_down);
 
@@ -469,7 +474,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       gettimeofday(&start_time, NULL);
       SendFinalTensors(response_list);
       gettimeofday(&end_time, NULL);
-      time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+      time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
+                   + (end_time.tv_usec - start_time.tv_usec) / 1000;
       LOG(TRACE) << "iietest: rank0广播耗时：" << time_taken;
     } else {         //worker的工作
       RequestList message_list;
@@ -502,19 +508,21 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
         }
         ss << ">";        
       }
-      LOG(TRACE) << ss.str() << endl;
+      LOG(TRACE) << ss.str() << std::endl;
       
       gettimeofday(&start_time, NULL);
       SendReadyTensors(message_list);
       gettimeofday(&end_time, NULL);
-      time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+      time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
+                   + (end_time.tv_usec - start_time.tv_usec) / 1000;
       LOG(TRACE) << "iietest: MPI_GATHER耗时：" << time_taken;
 
       // Receive final tensors to be processed from rank zero
       gettimeofday(&start_time, NULL);
       RecvFinalTensors(response_list);
       gettimeofday(&end_time, NULL);
-      time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec) + (end.tv_usec-start.tv_usec) / 1000;
+      time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
+                   + (end_time.tv_usec - start_time.tv_usec) / 1000;
       LOG(TRACE) << "iietest: 接收Response耗时：" << time_taken;
       // 记录接收完成之后的数据
       // 通过response_list获取
@@ -550,7 +558,6 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     for (const auto& r : response_list.responses()) {
       tensors_ready += r.tensor_names_string() + "; ";
     }
-    LOG(TRACE) << "Sending ready responses as " << tensors_ready;
     LOG(TRACE) << "iietest: Sending ready responses as " << tensors_ready;
   }
 
