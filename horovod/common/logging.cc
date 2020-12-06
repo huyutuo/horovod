@@ -13,7 +13,7 @@ LogMessage::LogMessage(const char* fname, int line, LogLevel severity)
 
 void LogMessage::GenerateLogMessage(bool log_time) {
   bool use_cout = static_cast<int>(severity_) <= static_cast<int>(LogLevel::INFO);
-  std::ostream& os = use_cout ? std::cout : std::cerr;
+  std::ostream& os = use_cout ? std::cout : std::cerr; //TRACE,DEBUG,INFO输出到stdout，其它到stderr
   if (log_time) {
     auto now = std::chrono::system_clock::now();
     auto as_time_t = std::chrono::system_clock::to_time_t(now);

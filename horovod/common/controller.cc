@@ -407,10 +407,8 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       LOG(TRACE) << "iietest: responses合并前";
       for (auto& response : responses) {
         LOG(TRACE) << "iietest: " << "-------------------------------------";
-        LOG(TRACE) << "iietest:  response.ResponseType_Name: "
-          << response.ResponseType_Name(response.response_type());
-        LOG(TRACE) << "iietest: response.tensor_names_string: "
-          << response.tensor_names_string();
+        LOG(TRACE) << "iietest: ResponseType:" << response.ResponseType_Name(response.response_type())
+                   << ";response.tensor_names_string:" << response.tensor_names_string();
         
         LOG(TRACE) << "iietest: response.tensor_size():";
         for (auto& size : response.tensor_sizes()) {
@@ -503,20 +501,19 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       // tensor_sizes()
       
       LOG(TRACE) << "iietest: 从coordinator接受的具体信息为";
+      int total_size;
       for (auto& response : response_list.responses()) {
-        LOG(TRACE) << "iietest: " << "-------------------------------------";
-        LOG(TRACE) << "iietest:  response.ResponseType_Name: "
-          << response.ResponseType_Name(response.response_type());
-        LOG(TRACE) << "iietest: response.tensor_names_string: "
-          << response.tensor_names_string();
-        
-        LOG(TRACE) << "iietest: response.tensor_size():";
+        total_size = 0;        
         for (auto& size : response.tensor_sizes()) {
-          LOG(TRACE) << "iietest: response.tensor_size : " << size;
+          total_size += size;          
         }
+
+        LOG(TRACE) << "iietest: " << "-------------------------------------";
+        LOG(TRACE) << "iietest:  Response Type:" << response.ResponseType_Name(response.response_type())
+                   << "; Tensor Name:" << response.tensor_names_string()        
+                   << "; Total tensor size:" << total_size;        
         LOG(TRACE) << "iietest: " << "-------------------------------------";
       }
-
 
     }
   }
