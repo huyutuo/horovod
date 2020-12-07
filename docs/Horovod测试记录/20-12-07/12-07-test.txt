@@ -1,0 +1,3 @@
+epochs = 10
+batch = 10
+batch_size = 32
