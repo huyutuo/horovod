@@ -74,7 +74,7 @@ void Controller::Initialize() {
 template <typename Container>
 void Print_Response_Info(std::string prefix_str, Container& responses, int rank) {
   std::stringstream ss;
-  int total_size;
+  int64_t total_size = 0;
 
   ss << prefix_str << rank;
   for (auto& response : responses) {
@@ -83,8 +83,8 @@ void Print_Response_Info(std::string prefix_str, Container& responses, int rank)
       total_size_in_response += size;
     }
     total_size += total_size_in_response;
-    ss << "; num of tensors in a response: " << response.tensor_sizes().size()
-       << "; Total Tensor Size in this response: " << total_size_in_response << ". ";
+    // ss << "; num of tensors in a response: " << response.tensor_sizes().size()
+    //    << "; Total Tensor Size in this response: " << total_size_in_response << ". ";
   }
 
   ss << "size of response queue: " << responses.size()
