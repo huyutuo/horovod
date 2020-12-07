@@ -444,19 +444,20 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       // root_rank()
       // tensor_name()
       // tensor_shape()
-      ss.str("");
-      ss << "iietest: before " << rank_ <<" MPI_GATHER. ";
+      LOG(TRACE) << "iietest: before " << rank_ <<" MPI_GATHER. ";
       for (auto& request : message_list.requests()) {
-        ss << "; Request type:" << request.RequestType_Name(request.request_type())
+        ss.str("");
+        ss << "iietest: Request type:" << request.RequestType_Name(request.request_type())
            << ",Root rank:" << request.root_rank()
            << ",Tensor shape:<";
 
         for (auto& size : request.tensor_shape()) {
            ss << size <<",";
         }
-        ss << ">. ";
+        ss << ">.";
+        LOG(TRACE) << ss.str() << std::endl;
       }
-      LOG(TRACE) << ss.str() << std::endl;
+
       
       gettimeofday(&start_time, NULL);
       SendReadyTensors(message_list);
