@@ -656,7 +656,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
       total_size += size;          
     }
-    ss.str("")
+    ss.str("");
     int t_size = response.tensor_sizes().size();
     ss << "Processing " << t_size << " tensors, total size:" << total_size;
     gettimeofday(&start_time, NULL);
@@ -675,7 +675,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     LOG(TRACE) << ss.str() << std::endl;
   }
 
-  ss.str("")
+  ss.str("");
   gettimeofday(&end_time, NULL);
   time_taken = 1000 * (end_time.tv_sec - preform_start_time.tv_sec)
                + (end_time.tv_usec - preform_start_time.tv_usec) / 1000;
