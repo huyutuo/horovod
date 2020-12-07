@@ -71,21 +71,24 @@ void Controller::Initialize() {
 }
 
 //为profiling增加的函数定义
-void Print_Response_Info(std::string prefix_str, std::deque<Response> responses, int rank) {
+template <typename Container>
+void Print_Response_Info(std::string prefix_str, Container& responses, int rank) {
   std::stringstream ss;
   int total_size;
 
   ss << prefix_str << rank;
   for (auto& response : responses) {
-    total_size = 0;
+    int total_size_in_response = 0;
     for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
-      total_size += size;          
+      total_size_in_response += size;
     }
-    ss << ";num of tensors in a response:" << response.tensor_sizes().size()
-       << ";Response Type:" << response.ResponseType_Name(response.response_type())                 
-       << ";Tensor Name:" << response.tensor_names_string()
-       << ";Tensor Size:" << total_size;           
+    total_size += total_size_in_response;
+    ss << "; num of tensors in a response: " << response.tensor_sizes().size()
+       << "; Total Tensor Size in this response: " << total_size_in_response << ". ";
   }
+
+  ss << "size of response queue: " << responses.size()
+     << "; Total Tensor Size in response queue: " << total_size << ".";
   LOG(TRACE) << ss.str() << std::endl;
 }
 
@@ -274,7 +277,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                  + (end_time.tv_usec - start_time.tv_usec) / 1000;
     LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
     
-    Print_Response_Info("iietest: no need comm. after FuseResponses:", responses, rank_);
+    Print_Response_Info("iietest: no need comm. after FuseResponses:", response_list.responses(), rank_);
     response_list.set_shutdown(cache_coordinator.should_shut_down());
   } else {  //worker和coordinator通信的部分。request和response的通信都在下面这段代码中
     // There are uncached messages coming in, need communication to figure out
@@ -413,7 +416,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                    + (end_time.tv_usec - start_time.tv_usec) / 1000;
       
       LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
-      Print_Response_Info("iietest: need comm. after FuseResponses:", responses, rank_);
+      Print_Response_Info("iietest: need comm. after FuseResponses:", response_list.responses(), rank_);
       
       response_list.set_shutdown(should_shut_down);
       
@@ -444,16 +447,14 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
       ss.str("");
       ss << "iietest: before " << rank_ <<" MPI_GATHER. ";
       for (auto& request : message_list.requests()) {
-        ss << ";Request type:" << request.RequestType_Name(request.request_type())
-           << ";Root rank:" << request.root_rank()           
-           << ";Tensor Name:" << request.tensor_name()
-           << ";Tensor type:" << DataType_Name(request.tensor_type())
-           << ";Tensor shape:<"; 
+        ss << "; Request type:" << request.RequestType_Name(request.request_type())
+           << ",Root rank:" << request.root_rank()
+           << ",Tensor shape:<";
 
         for (auto& size : request.tensor_shape()) {
            ss << size <<",";
         }
-        ss << ">";        
+        ss << ">. ";
       }
       LOG(TRACE) << ss.str() << std::endl;
       

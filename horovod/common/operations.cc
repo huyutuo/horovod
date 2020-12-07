@@ -655,7 +655,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
       total_size += size;          
     }
     int t_size = response.tensor_sizes().size();
-    ss << ";Processing " << t_size << " tensors, total size:" << total_size;                 
+    ss << "; Processing " << t_size << " tensors, total size:" << total_size;
     gettimeofday(&start_time, NULL);
     PerformOperation(response, horovod_global);
     gettimeofday(&end_time, NULL);
@@ -663,17 +663,23 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
                  + (end_time.tv_usec - start_time.tv_usec) / 1000;
     
-    ss << ";执行allreduce耗时:" << time_taken << "ms";
+    ss << "; 执行";
+    ss << response.ResponseType_Name(response.response_type());
+    ss << "耗时:" << time_taken << "ms";
     if (time_taken > 0) {
-      ss << ", avg:" << ((total_size*4)/(time_taken/1000));
+      ss << ", avg:" << (1000*(total_size*4)/time_taken) << " bytes/s.  ";
     }
-    
   }
 
   gettimeofday(&end_time, NULL);
+  time_taken = 1000 * (end_time.tv_sec - preform_start_time.tv_sec)
+               + (end_time.tv_usec - preform_start_time.tv_usec) / 1000;
+  ss << "。 执行所有PerformOperation耗时：" << time_taken << "ms";
+
   time_taken = 1000 * (end_time.tv_sec - runloop_start_time.tv_sec)
                 + (end_time.tv_usec - runloop_start_time.tv_usec) / 1000;
-  ss << "。一次循环(执行一次RunLoopOnce)耗时：" << time_taken << "ms"; 
+
+  ss << "。 一次循环(执行一次RunLoopOnce)耗时：" << time_taken << "ms";
   LOG(TRACE, rank) << ss.str() << std::endl;
 
   if (state.parameter_manager.IsAutoTuning()) {
