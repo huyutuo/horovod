@@ -591,10 +591,13 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
 
 //背景线程的循环体
 bool RunLoopOnce(HorovodGlobalState& state) {
+  struct timeval runloop_start_time;
   struct timeval start_time;
   struct timeval end_time;
   unsigned long time_taken;
   StringStream ss;
+
+  gettimeofday(&runloop_start_time, NULL);
 
   // This delay determines thread frequency and communication message latency
   auto now_time = std::chrono::steady_clock::now();
@@ -663,9 +666,9 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   }
 
   gettimeofday(&end_time, NULL);
-  time_taken = 1000 * (end_time.tv_sec - preform_start_time.tv_sec)
-                + (end_time.tv_usec - preform_start_time.tv_usec) / 1000;
-  ss << "。一次循环耗时：" << time_taken << "ms"; 
+  time_taken = 1000 * (end_time.tv_sec - runloop_start_time.tv_sec)
+                + (end_time.tv_usec - runloop_start_time.tv_usec) / 1000;
+  ss << "。一次循环(执行一次RunLoopOnce)耗时：" << time_taken << "ms"; 
   LOG(TRACE, rank) << ss.str() << std::endl;
 
   if (state.parameter_manager.IsAutoTuning()) {
