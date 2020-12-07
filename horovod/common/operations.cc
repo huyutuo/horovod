@@ -652,7 +652,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   gettimeofday(&preform_start_time, NULL);
   int rank = state.controller->GetRank();
   for (auto& response : response_list.responses()) { //每个response，执行一次allreduce
-    int total_size = 0;
+    long long  total_size = 0;
     for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
       total_size += size;          
     }
@@ -670,7 +670,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     ss << response.ResponseType_Name(response.response_type());
     ss << "耗时:" << time_taken << "ms";
     if (time_taken > 0) {
-      ss << ", avg:" << ((1000.0/(1024*1024))*(total_size*4*8)/time_taken) << " Mbps/s.  ";
+      ss << ", avg:" << ((1000.0/(1024*1024))*(1.0*total_size*4*8)/time_taken) << " Mbps/s.  ";
     }
     LOG(TRACE) << ss.str() << std::endl;
   }
