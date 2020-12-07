@@ -624,7 +624,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   gettimeofday(&end_time, NULL);
   time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec)
                + (end_time.tv_usec-start_time.tv_usec) / 1000;
-  ss << "iietest:执行ComputeResponseList耗时：" << time_taken << "ms"; 
+  ss << "iietest:ComputeResponseList耗时：" << time_taken << "ms"; 
 
   state.mark_cycles_in_timeline =
       state.controller->MarkCyclesInTimelinePending();

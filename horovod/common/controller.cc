@@ -413,7 +413,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
                    + (end_time.tv_usec - start_time.tv_usec) / 1000;
       
       LOG(TRACE) << "iietest: FuseResponses耗时：" << time_taken;
-      Print_Response_Info("iietest: need comm. before FuseResponses:", responses, rank_);
+      Print_Response_Info("iietest: need comm. after FuseResponses:", responses, rank_);
       
       response_list.set_shutdown(should_shut_down);
       
