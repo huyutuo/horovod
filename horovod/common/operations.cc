@@ -658,7 +658,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     }
     ss.str("");
     int t_size = response.tensor_sizes().size();
-    ss << "Processing " << t_size << " tensors, total size:" << total_size;
+    ss << "iietest: Processing " << t_size << " tensors, total size:" << total_size;
     gettimeofday(&start_time, NULL);
     PerformOperation(response, horovod_global);
     gettimeofday(&end_time, NULL);
@@ -679,7 +679,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   gettimeofday(&end_time, NULL);
   time_taken = 1000 * (end_time.tv_sec - preform_start_time.tv_sec)
                + (end_time.tv_usec - preform_start_time.tv_usec) / 1000;
-  ss << "执行所有PerformOperation耗时：" << time_taken << "ms";
+  ss << "iietest: 执行所有PerformOperation耗时：" << time_taken << "ms";
 
   time_taken = 1000 * (end_time.tv_sec - runloop_start_time.tv_sec)
                 + (end_time.tv_usec - runloop_start_time.tv_usec) / 1000;
