@@ -628,7 +628,9 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   gettimeofday(&end_time, NULL);
   time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec)
                + (end_time.tv_usec-start_time.tv_usec) / 1000;
-  ss << "iietest:ComputeResponseList耗时：" << time_taken << "ms"; 
+  ss << "iietest:ComputeResponseList耗时：" << time_taken << "ms";
+  LOG(TRACE) << ss.str() << std::endl;
+
 
   state.mark_cycles_in_timeline =
       state.controller->MarkCyclesInTimelinePending();
@@ -654,8 +656,9 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
       total_size += size;          
     }
+    ss.str("")
     int t_size = response.tensor_sizes().size();
-    ss << "; Processing " << t_size << " tensors, total size:" << total_size;
+    ss << "Processing " << t_size << " tensors, total size:" << total_size;
     gettimeofday(&start_time, NULL);
     PerformOperation(response, horovod_global);
     gettimeofday(&end_time, NULL);
@@ -663,24 +666,26 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
                  + (end_time.tv_usec - start_time.tv_usec) / 1000;
     
-    ss << "; 执行";
+    ss << ", 执行";
     ss << response.ResponseType_Name(response.response_type());
     ss << "耗时:" << time_taken << "ms";
     if (time_taken > 0) {
       ss << ", avg:" << ((1000.0/(1024*1024))*(total_size*4*8)/time_taken) << " Mbps/s.  ";
     }
+    LOG(TRACE) << ss.str() << std::endl;
   }
 
+  ss.str("")
   gettimeofday(&end_time, NULL);
   time_taken = 1000 * (end_time.tv_sec - preform_start_time.tv_sec)
                + (end_time.tv_usec - preform_start_time.tv_usec) / 1000;
-  ss << "。 执行所有PerformOperation耗时：" << time_taken << "ms";
+  ss << "执行所有PerformOperation耗时：" << time_taken << "ms";
 
   time_taken = 1000 * (end_time.tv_sec - runloop_start_time.tv_sec)
                 + (end_time.tv_usec - runloop_start_time.tv_usec) / 1000;
 
   ss << "。 一次循环(执行一次RunLoopOnce)耗时：" << time_taken << "ms";
-  LOG(TRACE, rank) << ss.str() << std::endl;
+  LOG(TRACE) << ss.str() << std::endl;
 
   if (state.parameter_manager.IsAutoTuning()) {
     bool should_sync =
