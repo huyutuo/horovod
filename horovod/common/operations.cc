@@ -591,10 +591,11 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
 
 //背景线程的循环体
 bool RunLoopOnce(HorovodGlobalState& state) {
-  LOG(TRACE) << "iietest: " << "开始执行RunLoopOnce";
   struct timeval start_time;
   struct timeval end_time;
   unsigned long time_taken;
+  StringStream ss;
+
   // This delay determines thread frequency and communication message latency
   auto now_time = std::chrono::steady_clock::now();
   std::chrono::_V2::steady_clock::rep tmp;
@@ -623,8 +624,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   gettimeofday(&end_time, NULL);
   time_taken = 1000 * (end_time.tv_sec-start_time.tv_sec)
                + (end_time.tv_usec-start_time.tv_usec) / 1000;
-  LOG(TRACE) << "iietest: " << "执行ComputeResponseList共耗时："
-             << time_taken << "ms"; 
+  ss << "iietest:执行ComputeResponseList耗时：" << time_taken << "ms"; 
 
   state.mark_cycles_in_timeline =
       state.controller->MarkCyclesInTimelinePending();
@@ -645,12 +645,12 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   struct timeval preform_start_time;
   gettimeofday(&preform_start_time, NULL);
   int rank = state.controller->GetRank();
-  for (auto& response : response_list.responses()) {
+  for (auto& response : response_list.responses()) { //每个response，执行一次allreduce
     int total_size = 0;
     for (auto& size : response.tensor_sizes()) { //size表示一个tensor中有多少个元素
       total_size += size;          
     }
-    LOG(TRACE, rank) << "iietest: " << "Processing " << response.tensor_sizes().size()
+    ss << ";Processing " << response.tensor_sizes().size()
                      << " tensors, total size:" << total_size;                 
     gettimeofday(&start_time, NULL);
     PerformOperation(response, horovod_global);
@@ -659,17 +659,14 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
                  + (end_time.tv_usec - start_time.tv_usec) / 1000;
  
-    LOG(TRACE, rank) << "iietest: " << "执行allreduce共耗时:"
-                     << time_taken << "ms"; 
+    ss << ";执行allreduce耗时:" << time_taken << "ms";    
   }
 
   gettimeofday(&end_time, NULL);
   time_taken = 1000 * (end_time.tv_sec - preform_start_time.tv_sec)
                 + (end_time.tv_usec - preform_start_time.tv_usec) / 1000;
-  LOG(TRACE) << "iietest: " << "执行所有的performing共耗时：" << time_taken << "ms"; 
-
-
-
+  ss << "。一次循环耗时：" << time_taken << "ms"; 
+  LOG(TRACE, rank) << ss.str() << std::endl;
 
   if (state.parameter_manager.IsAutoTuning()) {
     bool should_sync =
