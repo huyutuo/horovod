@@ -665,7 +665,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     
     ss << ";执行allreduce耗时:" << time_taken << "ms";
     if (time_taken > 0) {
-      ss << ", avg:" << (t_size/time_taken);
+      ss << ", avg:" << ((total_size*4)/(time_taken/1000));
     }
     
   }
