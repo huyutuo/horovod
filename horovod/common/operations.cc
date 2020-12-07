@@ -662,8 +662,12 @@ bool RunLoopOnce(HorovodGlobalState& state) {
 
     time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
                  + (end_time.tv_usec - start_time.tv_usec) / 1000;
- 
-    ss << ";执行allreduce耗时:" << time_taken << "ms, avg:" << (t_size/time_taken);    
+    
+    ss << ";执行allreduce耗时:" << time_taken << "ms";
+    if (time_taken > 0) {
+      ss << ", avg:" << (t_size/time_taken);
+    }
+    
   }
 
   gettimeofday(&end_time, NULL);
