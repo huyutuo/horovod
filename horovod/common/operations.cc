@@ -28,6 +28,7 @@
 #include <queue>
 #include <set>
 #include <sstream>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -595,7 +596,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   struct timeval start_time;
   struct timeval end_time;
   unsigned long time_taken;
-  StringStream ss;
+  std::stringstream ss;
 
   gettimeofday(&runloop_start_time, NULL);
 
