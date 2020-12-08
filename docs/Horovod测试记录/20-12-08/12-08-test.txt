@@ -1,0 +1,20 @@
+张家口可用区的horovod-dev001~horovod-dev003。 登录方式:开启horovod-dev001后, ssh 公网ip，密码:(). 利用horovod-dev001当做跳板机可以直接ssh连接至其他节点.
+
+节点间的延迟如下,第一列为发送ping命令的节点rank:
+0 1  avg_time=0.149ms
+0 2  avg_time0.158ms
+0 3  avg_time0.134ms
+
+1 0  avg_time0.135ms
+1 2  avg_time0.148ms
+1 3  avg_time0.122ms
+
+2 0  avg_time0.154ms
+2 1  avg_time0.147ms
+2 3  avg_time0.143ms
+
+3 0  avg_time0.130ms
+3 1  avg_time0.131ms
+3 2  avg_time0.140ms
+
+
