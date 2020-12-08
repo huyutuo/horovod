@@ -233,7 +233,7 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
     LOG(TRACE, rank_) << "iietest: " << "Sent " << message_queue_tmp.size()
                       << " messages to coordinator.";
   }
-
+  
   ResponseList response_list;
   response_list.set_shutdown(cache_coordinator.should_shut_down());
 

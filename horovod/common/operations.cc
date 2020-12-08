@@ -598,7 +598,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   unsigned long time_taken;
   std::stringstream ss;
 
-  gettimeofday(&runloop_start_time, NULL);
+  
 
   // This delay determines thread frequency and communication message latency
   auto now_time = std::chrono::steady_clock::now();
@@ -614,6 +614,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   }
   state.last_cycle_start = std::chrono::steady_clock::now();
 
+  gettimeofday(&runloop_start_time, NULL);
   if (state.mark_cycles_in_timeline) {
     // Mark start of the new cycle.
     state.timeline.MarkCycleStart();
