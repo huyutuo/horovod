@@ -669,7 +669,7 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     
     ss << ", 执行";
     ss << response.ResponseType_Name(response.response_type());
-    ss << "耗时:" << time_taken << "us";
+    ss << "耗时:" << time_taken * 1.0 / 1000 << "ms";
     if (time_taken > 0) {
       double avg = ((1000.0*1000.0/(1024*1024))*(1.5*total_size*4*8)/time_taken);
       ss << ", avg: " << avg << "Mbps. ";
