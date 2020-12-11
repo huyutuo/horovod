@@ -664,14 +664,15 @@ bool RunLoopOnce(HorovodGlobalState& state) {
     PerformOperation(response, horovod_global);
     gettimeofday(&end_time, NULL);
 
-    time_taken = 1000 * (end_time.tv_sec - start_time.tv_sec)
-                 + (end_time.tv_usec - start_time.tv_usec) / 1000;
+    time_taken = 1000 * 1000 * (end_time.tv_sec - start_time.tv_sec)
+                 + (end_time.tv_usec - start_time.tv_usec);
     
     ss << ", 执行";
     ss << response.ResponseType_Name(response.response_type());
-    ss << "耗时:" << time_taken << "ms";
+    ss << "耗时:" << time_taken << "us";
     if (time_taken > 0) {
-      ss << ", avg:" << ((1000.0/(1024*1024))*(1.5*total_size*4*8)/time_taken) << " Mbps/s.  ";
+      double avg = ((1000.0*1000.0/(1024*1024))*(1.5*total_size*4*8)/time_taken);
+      ss << ", avg: " << avg << "Mbps. ";
     }
     LOG(TRACE) << ss.str() << std::endl;
   }
