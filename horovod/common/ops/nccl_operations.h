@@ -75,6 +75,7 @@ private:
   horovod::common::Communicator communicator_type_;
 };
 
+// GPUAllreduce 继承 AllreduceOp
 class NCCLAllreduce : public GPUAllreduce {
 public:
   NCCLAllreduce(NCCLContext* nccl_context, GPUContext* gpu_context,
