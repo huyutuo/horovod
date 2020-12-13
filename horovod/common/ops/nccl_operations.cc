@@ -125,6 +125,7 @@ void NCCLOpContext::PopulateNCCLCommStrategy(int& nccl_rank, int& nccl_size,
 
 Status NCCLAllreduce::Execute(std::vector<TensorTableEntry>& entries,
                               const Response& response) {
+  LOG(TRACE) << "iietest: " << "in NCCLAllreduce Execute";
   auto& first_entry = entries[0];
 
   gpu_op_context_.InitGPU(entries);
@@ -160,6 +161,8 @@ Status NCCLAllreduce::Execute(std::vector<TensorTableEntry>& entries,
   // NCCL operation 使用gpu_context_->RecordEvent 来记录时间
   // 将allreduce操作放入stream中即返回成功
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/streams.html
+  NCCLAllreduce::Execute
+  LOG(TRACE) << "iietest: " << "run ncclAllReduce";
   auto nccl_result = ncclAllReduce(fused_input_data, buffer_data,
                                    (size_t) num_elements,
                                    GetNCCLDataType(first_entry.tensor), ncclSum,

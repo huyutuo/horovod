@@ -41,6 +41,7 @@ Status OperationManager::ExecuteAllreduce(std::vector<TensorTableEntry>& entries
                                           const Response& response) const {
   for (auto& op : allreduce_ops_) {
     if (op->Enabled(*param_manager_, entries, response)) {
+      LOG(TRACE) << "iietest: " << "op Execute";
       return op->Execute(entries, response);
     }
   }

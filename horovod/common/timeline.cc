@@ -456,6 +456,7 @@ void Timeline::ActivityStart(const std::string& tensor_name,
 
 void Timeline::ActivityEndAll(const std::vector<TensorTableEntry>& entries) {
   for (auto& e : entries) {
+    LOG(TRACE) << "iietest: " << "timeline end " << e.tensor_name;
     ActivityEnd(e.tensor_name);
   }
 }

@@ -261,6 +261,7 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
                                                              state.joined);
 
     for (auto& e : entries) {
+      LOG(TRACE) << "iietest: " << "timeline  " << e.tensor_name << " start";
       timeline.Start(e.tensor_name, response.response_type());
     }
 
@@ -317,6 +318,7 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
 
   Status status;
   try {
+    LOG(TRACE) << "iietest: " << "ExecuteOperation ";
     status = op_manager->ExecuteOperation(entries, response);  //执行操作
   } catch (const std::exception& ex) {
     LOG(DEBUG, horovod_global.controller->GetRank()) << "ExecuteOperation Failed";
