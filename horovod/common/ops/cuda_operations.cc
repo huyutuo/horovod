@@ -89,6 +89,7 @@ public:
       }
 
       // Check for async (networking) errors while waiting for the event to complete
+      // 当一个event完成，timeline记录完成时间
       cudaError_t cuda_result;
       while (true) {
         cuda_result = cudaEventQuery(event);

@@ -157,11 +157,16 @@ Status NCCLAllreduce::Execute(std::vector<TensorTableEntry>& entries,
   }
 
   // Do allreduce.
+  // NCCL operation 使用gpu_context_->RecordEvent 来记录时间
+  // 将allreduce操作放入stream中即返回成功
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/streams.html
   auto nccl_result = ncclAllReduce(fused_input_data, buffer_data,
                                    (size_t) num_elements,
                                    GetNCCLDataType(first_entry.tensor), ncclSum,
                                    *nccl_op_context_.nccl_comm_, *gpu_op_context_.stream);
   nccl_context_->ErrorCheck("ncclAllReduce", nccl_result, *nccl_op_context_.nccl_comm_);
+
+  // gpu_op_context_.event_queue中存放了操作的event,用来记录时间
   if (global_state_->timeline.Initialized()) {
     gpu_context_->RecordEvent(gpu_op_context_.event_queue, NCCL_ALLREDUCE, *gpu_op_context_.stream);
   }

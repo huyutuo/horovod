@@ -59,6 +59,7 @@ Status MPI_GPUAllreduce::Execute(std::vector<TensorTableEntry>& entries, const R
   }
 
   // Do allreduce.
+  // MPI-GPU-Operation通过调用timeline API记录时间
   timeline.ActivityStartAll(entries, MPI_ALLREDUCE);
   const void* sendbuf = entries.size() > 1 || fused_input_data == buffer_data
                         ? MPI_IN_PLACE : fused_input_data;

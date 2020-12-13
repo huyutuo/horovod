@@ -62,7 +62,6 @@ public:
   // other parts of the graph. Overlaying memory transfers and compute during
   // backpropagation is crucial for good performance, so we cannot use the
   // TensorFlow stream, and must use our own stream.
-  // TODO: stream 这个应该提到了异步
   std::vector<std::unordered_map<int, gpuStream_t>> streams;
 
   void ErrorCheck(std::string op_name, gpuError_t gpu_result);

@@ -64,6 +64,7 @@ Status GPUOpContext::FinalizeGPUQueue(const std::vector<TensorTableEntry>& entri
   auto fusion_buffer = global_state_->fusion_buffer.GetBuffer(
       first_entry.device, first_entry.context->framework(), global_state_->current_nccl_stream);
 
+  // 线程池：当一个event完成之后，将时间记录下来
   gpu_context_->finalizer_thread_pool.execute([entries, first_entry, cpu_buffer, fusion_buffer, free_host_buffer,
                                                 evt_queue, &timeline, &gpu_context, error_check_callback]() mutable {
     gpu_context->SetDevice(first_entry.device);
