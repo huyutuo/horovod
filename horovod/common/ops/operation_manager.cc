@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "operation_manager.h"
+#include "../logging.h"
 
 namespace horovod {
 namespace common {

@@ -469,7 +469,7 @@ void Timeline::ActivityEnd(const std::string& tensor_name) {
 
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   assert(tensor_states_[tensor_name] == TimelineState::ACTIVITY);
-  LOG(TRACE) << "iietest: " << "timeline " << tensor_name << "end activity " << activity;
+  LOG(TRACE) << "iietest: " << "timeline " << tensor_name << "end activity ";
   WriteEvent(tensor_name, 'E');
   tensor_states_[tensor_name] = TimelineState::TOP_LEVEL;
 }

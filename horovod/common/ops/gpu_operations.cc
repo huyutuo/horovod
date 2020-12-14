@@ -15,6 +15,7 @@
 // =============================================================================
 
 #include "gpu_operations.h"
+#include "../logging.h"
 #if HAVE_CUDA
 #include "cuda/cuda_kernels.h"
 #endif
