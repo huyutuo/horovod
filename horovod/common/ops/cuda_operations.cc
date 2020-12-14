@@ -17,6 +17,7 @@
 #include "gpu_operations.h"
 #include "cuda/cuda_kernels.h"
 #include "../message.h"
+#include "../logging.h"
 
 #include <thread>
 
@@ -85,6 +86,9 @@ public:
       std::tie(name, event) = event_queue.front();
       event_queue.pop();
       if (name != "") {
+        LOG(TRACE) << "iietest: " << "timeline ActivityStartAll. "
+                   << "entries size " << entries.size()
+                   << ", activity name: " << name;
         timeline.ActivityStartAll(entries, name);
       }
 
@@ -108,6 +112,9 @@ public:
       }
 
       if (name != "") {
+        LOG(TRACE) << "iietest: " << "timeline ActivityEndAll. "
+                   << "entries size " << entries.size()
+                   << ", activity name: " << name;
         timeline.ActivityEndAll(entries);
       }
       ErrorCheck("ReleaseGpuEvent", ReleaseGpuEvent(event));
