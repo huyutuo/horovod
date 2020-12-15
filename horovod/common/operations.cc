@@ -261,7 +261,6 @@ void PerformOperation(Response response, HorovodGlobalState& state) {
                                                              state.joined);
 
     for (auto& e : entries) {
-      LOG(TRACE) << "iietest: " << "timeline  " << e.tensor_name << " start";
       timeline.Start(e.tensor_name, response.response_type());
     }
 
