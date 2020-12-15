@@ -18,6 +18,7 @@
 #include "cuda/cuda_kernels.h"
 #include "../message.h"
 #include "../logging.h"
+#include <sys/time.h>
 
 #include <thread>
 
@@ -128,7 +129,7 @@ public:
         double num_of_mb = 1.5 * size * 4 * 8 / (1024 * 1024);
         double avg = 1000 * 1000 * num_of_mb / time_taken;
         ss << "iietest: Processing " << entries.size()
-           << " tensors, total size:" << size;
+           << " tensors, total size:" << size
            << ", 执行" << name << "耗时" << time_taken * 1.0 / 1000 << "ms"
            << ", avg: " <<  avg << "Mbps.";
         LOG(TRACE) << ss.str() << std::endl;
