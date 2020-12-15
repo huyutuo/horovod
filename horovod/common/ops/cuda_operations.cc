@@ -85,10 +85,14 @@ public:
       cudaEvent_t event;
       std::tie(name, event) = event_queue.front();
       event_queue.pop();
+
+      struct timeval start_time;
+      struct timeval end_time;
+      unsigned long time_taken;
+      std::stringstream ss;
+
       if (name != "") {
-        LOG(TRACE) << "iietest: " << "timeline ActivityStartAll. "
-                   << "entries size " << entries.size()
-                   << ", activity name: " << name;
+        gettimeofday(&start_time, NULL);
         timeline.ActivityStartAll(entries, name);
       }
 
@@ -112,9 +116,22 @@ public:
       }
 
       if (name != "") {
-        LOG(TRACE) << "iietest: " << "timeline ActivityEndAll. "
-                   << "entries size " << entries.size()
-                   << ", activity name: " << name;
+        if (name == "NCCL_ALLREDUCE" || name == "NCCL_BCAST")
+        gettimeofday(&end_time, NULL);
+        time_taken = 1000 * 1000 * (end_time.tv_sec - start_time.tv_sec)
+                 + (end_time.tv_usec - start_time.tv_usec);
+        long long size = 0;
+        for (auto entry : entries) {
+          size += entry.tensor->size();
+        }
+
+        double num_of_mb = 1.5 * size * 4 * 8 / (1024 * 1024);
+        double avg = 1000 * 1000 * num_of_mb / time_taken;
+        ss << "iietest: Processing " << entries.size()
+           << " tensors, total size:" << size;
+           << ", 执行" << name << "耗时" << time_taken * 1.0 / 1000 << "ms"
+           << ", avg: " <<  avg << "Mbps.";
+        LOG(TRACE) << ss.str() << std::endl;
         timeline.ActivityEndAll(entries);
       }
       ErrorCheck("ReleaseGpuEvent", ReleaseGpuEvent(event));
