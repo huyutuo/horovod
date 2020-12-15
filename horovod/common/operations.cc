@@ -654,6 +654,11 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   gettimeofday(&preform_start_time, NULL);
   int rank = state.controller->GetRank();
   for (auto& response : response_list.responses()) { //每个response，执行一次allreduce
+    long long all_size = 0;
+    for (auto &v : response.tensor_sizes()) {
+      all_size += v;
+    }
+    LOG(TRACE) <<"iietest: size in operation " << all_size;
     PerformOperation(response, horovod_global);
   }
 
