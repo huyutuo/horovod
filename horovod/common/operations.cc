@@ -674,6 +674,8 @@ bool RunLoopOnce(HorovodGlobalState& state) {
   ss << "。 一次循环(执行一次RunLoopOnce)耗时：" << time_taken << "ms";
   LOG(TRACE) << ss.str() << std::endl;
 
+
+  // 在此位置进行autotune更新
   if (state.parameter_manager.IsAutoTuning()) {
     bool should_sync =
         state.parameter_manager.Update(tensor_names, total_tensor_size);
